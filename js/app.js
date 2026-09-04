@@ -8,6 +8,7 @@ import { SupabaseSyncEngine, getConnectionStatus, onStatusChange } from './supab
 import { getPreviousMonthStr, getNextMonthStr } from './calculations.js';
 import { currentMonthLocalStr } from './utils.js';
 import { restoreSession, isAuthenticated, hasSkippedLogin, showLoginGate, onAuthChange, signOut } from './auth.js';
+import { applyTheme, watchSystemTheme } from './theme.js';
 
 import { renderDashboardView } from './ui/dashboardView.js';
 import { renderTransactionsView } from './ui/transactionsView.js';
@@ -26,12 +27,32 @@ class CoupleFinanceApp {
     this.currentMonthStr = currentMonthLocalStr();
 
     StorageManager.init();
+
+    // 테마 적용 (첫 페인트 전에)
+    const settings = StorageManager.getSettings();
+    applyTheme(settings.theme);
+    watchSystemTheme(() => StorageManager.getSettings().theme);
+
     this.initDOM();
     this.initModal();
     this.bindGlobalEvents();
 
     this.render();
+    this.initRecurring();
     this.initRealtimeSync();
+  }
+
+  /** 이번 달 반복 거래(고정비)를 자동 생성합니다. 이미 생성됐으면 아무 일도 하지 않습니다. */
+  async initRecurring() {
+    try {
+      const created = await StorageManager.applyRecurring(currentMonthLocalStr());
+      if (created.length > 0) {
+        console.log(`[반복거래] ${created.length}건 자동 생성`);
+        this.requestRender();
+      }
+    } catch (e) {
+      console.warn('반복 거래 생성 실패:', e);
+    }
   }
 
   async initRealtimeSync() {
@@ -62,6 +83,7 @@ class CoupleFinanceApp {
   async startCloudSync() {
     await SupabaseSyncEngine.checkConnection();
     this.syncState = await StorageManager.syncFromCloud();
+    await this.initRecurring();
     this.updateCloudBadge();
     this.render();
 

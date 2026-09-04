@@ -11,7 +11,8 @@
 
 import {
   DEFAULT_USERS, DEFAULT_CATEGORIES, DEFAULT_BUDGETS, DEFAULT_GOALS, DEFAULT_ACCOUNTS,
-  DEMO_BUDGETS, DEMO_GOALS, DEMO_ACCOUNTS, generateDemoTransactions,
+  DEFAULT_SETTINGS, DEFAULT_RECURRING,
+  DEMO_BUDGETS, DEMO_GOALS, DEMO_ACCOUNTS, DEMO_RECURRING, generateDemoTransactions,
   isSampleTransactionId, SAMPLE_BUDGET_IDS, SAMPLE_GOAL_IDS
 } from './models.js';
 import { SupabaseSyncEngine } from './supabaseClient.js';
@@ -23,6 +24,8 @@ const STORAGE_KEYS = {
   BUDGETS: 'couple_finance_budgets',
   GOALS: 'couple_finance_goals',
   ACCOUNTS: 'couple_finance_accounts',
+  RECURRING: 'couple_finance_recurring',
+  SETTINGS: 'couple_finance_settings',
   QUEUE: 'couple_finance_sync_queue',
   SYNCED_ONCE: 'couple_finance_synced_once',
   DEMO: 'couple_finance_demo_mode'
@@ -94,6 +97,12 @@ export class StorageManager {
     if (localStorage.getItem(STORAGE_KEYS.ACCOUNTS) === null) {
       writeJSON(STORAGE_KEYS.ACCOUNTS, isDemoMode() ? DEMO_ACCOUNTS : DEFAULT_ACCOUNTS);
     }
+    if (localStorage.getItem(STORAGE_KEYS.RECURRING) === null) {
+      writeJSON(STORAGE_KEYS.RECURRING, isDemoMode() ? DEMO_RECURRING : DEFAULT_RECURRING);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.SETTINGS) === null) {
+      writeJSON(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+    }
     // ⚠️ 여기서 syncFromCloud() 를 호출하지 않습니다.
     //    app.js 가 한 번만 호출하도록 하여 중복 실행/경쟁을 막습니다.
   }
@@ -145,6 +154,14 @@ export class StorageManager {
           ok = await SupabaseSyncEngine.saveUsers(op.data);
         } else if (op.table === 'categories') {
           ok = await SupabaseSyncEngine.saveCategories([op.data]);
+        } else if (op.table === 'accounts') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteAccount(op.id)
+            : await SupabaseSyncEngine.saveAccounts([op.data]);
+        } else if (op.table === 'recurring') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteRecurring(op.id)
+            : await SupabaseSyncEngine.saveRecurring([op.data]);
         } else {
           ok = true; // 알 수 없는 작업은 버립니다
         }
@@ -251,6 +268,28 @@ export class StorageManager {
       } else if (!syncedOnce) {
         const local = this.getGoals().filter(g => !SAMPLE_GOAL_IDS.includes(g.id));
         if (local.length > 0) await SupabaseSyncEngine.saveGoals(local);
+      }
+    }
+
+    // 8) 계좌
+    const cloudAccounts = await SupabaseSyncEngine.fetchAccounts();
+    if (Array.isArray(cloudAccounts)) {
+      if (cloudAccounts.length > 0) {
+        writeJSON(STORAGE_KEYS.ACCOUNTS, cloudAccounts);
+      } else if (!syncedOnce) {
+        const local = this.getAccounts().filter(a => !DEMO_ACCOUNTS.some(d => d.id === a.id));
+        if (local.length > 0) await SupabaseSyncEngine.saveAccounts(local);
+      }
+    }
+
+    // 9) 반복 거래 템플릿
+    const cloudRecurring = await SupabaseSyncEngine.fetchRecurring();
+    if (Array.isArray(cloudRecurring)) {
+      if (cloudRecurring.length > 0) {
+        writeJSON(STORAGE_KEYS.RECURRING, cloudRecurring);
+      } else if (!syncedOnce) {
+        const local = this.getRecurring().filter(r => !DEMO_RECURRING.some(d => d.id === r.id));
+        if (local.length > 0) await SupabaseSyncEngine.saveRecurring(local);
       }
     }
 
@@ -432,15 +471,146 @@ export class StorageManager {
     return ok;
   }
 
-  /* ===================== Accounts (로컬 전용) ===================== */
+  /* ===================== Accounts ===================== */
 
   static getAccounts() {
     const a = readJSON(STORAGE_KEYS.ACCOUNTS, DEFAULT_ACCOUNTS);
-    return Array.isArray(a) ? a : [];
+    if (!Array.isArray(a)) return [];
+    // 구버전 balance -> openingBalance 마이그레이션
+    return a.map(acc => (acc.openingBalance === undefined && acc.balance !== undefined)
+      ? { ...acc, openingBalance: Number(acc.balance) || 0 }
+      : acc);
   }
 
-  static saveAccounts(accounts) {
+  static async saveAccounts(accounts) {
     writeJSON(STORAGE_KEYS.ACCOUNTS, accounts);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.saveAccounts(accounts);
+    if (!ok) accounts.forEach(a => this._enqueue({ table: 'accounts', op: 'upsert', id: a.id, data: a }));
+    return ok;
+  }
+
+  static async deleteAccount(id) {
+    const accounts = this.getAccounts().filter(a => a.id !== id);
+    writeJSON(STORAGE_KEYS.ACCOUNTS, accounts);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.deleteAccount(id);
+    if (!ok) this._enqueue({ table: 'accounts', op: 'delete', id });
+    return ok;
+  }
+
+  /* ===================== App Settings (기기별) ===================== */
+
+  static getSettings() {
+    return { ...DEFAULT_SETTINGS, ...readJSON(STORAGE_KEYS.SETTINGS, {}) };
+  }
+
+  static saveSettings(patch) {
+    const next = { ...this.getSettings(), ...patch };
+    writeJSON(STORAGE_KEYS.SETTINGS, next);
+    return next;
+  }
+
+  /* ===================== Recurring (반복 거래) ===================== */
+
+  static getRecurring() {
+    const r = readJSON(STORAGE_KEYS.RECURRING, DEFAULT_RECURRING);
+    return Array.isArray(r) ? r : [];
+  }
+
+  static async saveRecurringList(list) {
+    writeJSON(STORAGE_KEYS.RECURRING, list);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.saveRecurring(list);
+    if (!ok) list.forEach(r => this._enqueue({ table: 'recurring', op: 'upsert', id: r.id, data: r }));
+    return ok;
+  }
+
+  static async addRecurring(template) {
+    const list = this.getRecurring();
+    const item = {
+      active: true,
+      startMonth: new Date().toISOString().slice(0, 7),
+      ...template,
+      id: template.id || 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    };
+    list.push(item);
+    await this.saveRecurringList(list);
+    return item;
+  }
+
+  static async updateRecurring(id, patch) {
+    const list = this.getRecurring();
+    const idx = list.findIndex(r => r.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], ...patch };
+    await this.saveRecurringList(list);
+    return list[idx];
+  }
+
+  static async deleteRecurring(id) {
+    const list = this.getRecurring().filter(r => r.id !== id);
+    writeJSON(STORAGE_KEYS.RECURRING, list);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.deleteRecurring(id);
+    if (!ok) this._enqueue({ table: 'recurring', op: 'delete', id });
+    return ok;
+  }
+
+  /**
+   * 해당 월의 반복 거래를 생성합니다.
+   * 거래 id 가 `rtx_<템플릿id>_<YYYY-MM>` 로 고정되어 있어 몇 번을 실행해도
+   * 중복 생성되지 않습니다 (멱등).
+   * @returns 생성된 거래 배열
+   */
+  static async applyRecurring(monthStr) {
+    const templates = this.getRecurring().filter(r => r.active !== false);
+    if (templates.length === 0) return [];
+
+    const existing = this.getTransactions();
+    const existingIds = new Set(existing.map(t => t.id));
+
+    const [y, m] = monthStr.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const now = new Date().toISOString();
+    const created = [];
+
+    for (const tpl of templates) {
+      if (tpl.startMonth && monthStr < tpl.startMonth) continue;
+      if (tpl.endMonth && monthStr > tpl.endMonth) continue;
+
+      const txId = `rtx_${tpl.id}_${monthStr}`;
+      if (existingIds.has(txId)) continue;
+
+      const day = Math.min(Math.max(Number(tpl.dayOfMonth) || 1, 1), daysInMonth);
+      const tx = {
+        id: txId,
+        date: `${monthStr}-${String(day).padStart(2, '0')}`,
+        type: tpl.type || 'expense',
+        amount: Number(tpl.amount) || 0,
+        userId: tpl.userId || 'husband',
+        categoryId: tpl.type === 'transfer' ? '' : (tpl.categoryId || ''),
+        sharedType: tpl.sharedType || 'shared',
+        paymentMethod: tpl.paymentMethod || 'bank',
+        accountId: tpl.accountId || '',
+        isFixed: tpl.type === 'expense' ? true : false,
+        memo: tpl.memo || tpl.name || '반복 거래',
+        recurringId: tpl.id,
+        createdAt: now,
+        updatedAt: now
+      };
+      if (tx.amount <= 0) continue;
+
+      existing.unshift(tx);
+      created.push(tx);
+    }
+
+    if (created.length > 0) {
+      existing.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      this.saveTransactions(existing);
+      for (const tx of created) await this._pushTransaction(tx);
+    }
+    return created;
   }
 
   /* ===================== 정리 / 초기화 / 백업 ===================== */
@@ -456,6 +626,7 @@ export class StorageManager {
     const goals = this.getGoals().filter(g => !SAMPLE_GOAL_IDS.includes(g.id));
     writeJSON(STORAGE_KEYS.GOALS, goals);
     writeJSON(STORAGE_KEYS.ACCOUNTS, this.getAccounts().filter(a => !DEMO_ACCOUNTS.some(d => d.id === a.id)));
+    writeJSON(STORAGE_KEYS.RECURRING, this.getRecurring().filter(r => !DEMO_RECURRING.some(d => d.id === r.id)));
 
     if (!isDemoMode() && sampleIds.length > 0) {
       await SupabaseSyncEngine.deleteTransactionsByIds(sampleIds);
@@ -469,6 +640,8 @@ export class StorageManager {
       await SupabaseSyncEngine.deleteAllTransactions();
       await SupabaseSyncEngine.deleteAllBudgets();
       await SupabaseSyncEngine.deleteAllGoals();
+      await SupabaseSyncEngine.deleteAllAccounts();
+      await SupabaseSyncEngine.deleteAllRecurring();
     }
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
     _demoMode = null;
@@ -485,6 +658,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.BUDGETS, DEMO_BUDGETS);
     writeJSON(STORAGE_KEYS.GOALS, DEMO_GOALS);
     writeJSON(STORAGE_KEYS.ACCOUNTS, DEMO_ACCOUNTS);
+    writeJSON(STORAGE_KEYS.RECURRING, DEMO_RECURRING);
     this._setQueue([]);
   }
 
@@ -495,6 +669,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.BUDGETS, []);
     writeJSON(STORAGE_KEYS.GOALS, []);
     writeJSON(STORAGE_KEYS.ACCOUNTS, []);
+    writeJSON(STORAGE_KEYS.RECURRING, []);
     localStorage.removeItem(STORAGE_KEYS.SYNCED_ONCE);
   }
 
@@ -506,8 +681,10 @@ export class StorageManager {
       budgets: this.getBudgets(),
       goals: this.getGoals(),
       accounts: this.getAccounts(),
+      recurring: this.getRecurring(),
+      settings: this.getSettings(),
       exportedAt: new Date().toISOString(),
-      version: 2
+      version: 3
     }, null, 2);
   }
 
@@ -541,7 +718,9 @@ export class StorageManager {
         if (!isDemoMode() && data.budgets.length) await SupabaseSyncEngine.upsertBudgets(data.budgets);
       }
       if (Array.isArray(data.goals) && data.goals.length) await this.saveGoals(data.goals);
-      if (Array.isArray(data.accounts)) this.saveAccounts(data.accounts);
+      if (Array.isArray(data.accounts) && data.accounts.length) await this.saveAccounts(data.accounts);
+      if (Array.isArray(data.recurring) && data.recurring.length) await this.saveRecurringList(data.recurring);
+      if (data.settings) this.saveSettings(data.settings);
 
       return { ok: true, count: stamped.length };
     } catch (e) {

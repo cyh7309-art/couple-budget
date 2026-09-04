@@ -96,7 +96,7 @@ export class SupabaseSyncEngine {
     const sb = getSupabase();
     if (!sb) return null;
 
-    const tables = ['transactions', 'user_settings', 'budgets', 'goals', 'categories'];
+    const tables = ['transactions', 'user_settings', 'budgets', 'goals', 'categories', 'accounts', 'recurring'];
 
     try {
       let channel = sb.channel('couple-db-sync');
@@ -205,6 +205,42 @@ export class SupabaseSyncEngine {
 
   static async deleteAllGoals() {
     return runWrite('deleteAllGoals', s => s.from('goals').delete().neq('id', '__never__'));
+  }
+
+  // --- Accounts ---
+  static async fetchAccounts() {
+    return runRead('fetchAccounts', s => s.from('accounts').select('*'));
+  }
+
+  static async saveAccounts(list) {
+    if (!list || list.length === 0) return true;
+    return runWrite('saveAccounts', s => s.from('accounts').upsert(list));
+  }
+
+  static async deleteAccount(id) {
+    return runWrite('deleteAccount', s => s.from('accounts').delete().eq('id', id));
+  }
+
+  static async deleteAllAccounts() {
+    return runWrite('deleteAllAccounts', s => s.from('accounts').delete().neq('id', '__never__'));
+  }
+
+  // --- Recurring (반복 거래 템플릿) ---
+  static async fetchRecurring() {
+    return runRead('fetchRecurring', s => s.from('recurring').select('*'));
+  }
+
+  static async saveRecurring(list) {
+    if (!list || list.length === 0) return true;
+    return runWrite('saveRecurring', s => s.from('recurring').upsert(list));
+  }
+
+  static async deleteRecurring(id) {
+    return runWrite('deleteRecurring', s => s.from('recurring').delete().eq('id', id));
+  }
+
+  static async deleteAllRecurring() {
+    return runWrite('deleteAllRecurring', s => s.from('recurring').delete().neq('id', '__never__'));
   }
 
   // --- Categories ---

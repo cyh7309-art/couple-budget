@@ -31,6 +31,11 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
   const transactions = StorageManager.getTransactions();
   const categories = StorageManager.getCategories();
   const users = StorageManager.getUsers();
+  const accounts = StorageManager.getAccounts();
+  const accountName = (id) => {
+    const a = accounts.find(x => x.id === id);
+    return a ? a.name : '';
+  };
 
   const husbandName = users.husband.name;
   const wifeName = users.wife.name;
@@ -131,6 +136,7 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
                         <span class="tx-name">${esc(t.memo) || (catObj ? esc(catObj.name) : '거래')}</span>
                         <div class="tx-badges">
                           <span class="badge ${sharedBadgeClass}">${sharedBadgeText}</span>
+                          ${t.recurringId ? '<span class="badge badge-fixed">🔁 반복</span>' : ''}
                           ${t.type === 'expense' ? `
                             <span class="badge ${t.isFixed ? 'badge-fixed' : 'badge-variable'}">
                               ${t.isFixed ? '📌 고정비' : '🌊 변동비'}
@@ -143,6 +149,9 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
                         <span>·</span>
                         <span>${catObj ? esc(catObj.name) : (isTransfer ? '계좌이체' : '미분류')}</span>
                         ${t.paymentMethod ? `<span>·</span><span>💳 ${t.paymentMethod === 'card' ? '카드' : (t.paymentMethod === 'bank' ? '계좌' : '현금')}</span>` : ''}
+                        ${isTransfer && (t.fromAccountId || t.toAccountId)
+                          ? `<span>·</span><span>🏦 ${esc(accountName(t.fromAccountId)) || '?'} → ${esc(accountName(t.toAccountId)) || '?'}</span>`
+                          : (t.accountId && accountName(t.accountId) ? `<span>·</span><span>🏦 ${esc(accountName(t.accountId))}</span>` : '')}
                       </div>
                     </div>
                     <div class="tx-amount-col">

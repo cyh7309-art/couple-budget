@@ -162,6 +162,27 @@
           </div>
         </div>
 
+        <!-- Account Selector (지출/수입) -->
+        <div class="form-group margin-top-sm" id="modal-group-account">
+          <label class="form-label" for="modal-select-account">🏦 사용 계좌 (선택)</label>
+          <select id="modal-select-account" class="form-select">
+            <option value="">선택 안 함</option>
+          </select>
+        </div>
+
+        <!-- Transfer Accounts (이체 전용) -->
+        <div class="form-group margin-top-sm" id="modal-group-transfer" style="display:none">
+          <label class="form-label">🔄 이체 계좌</label>
+          <div class="form-row-2">
+            <select id="modal-select-from" class="form-select">
+              <option value="">출금 계좌 선택</option>
+            </select>
+            <select id="modal-select-to" class="form-select">
+              <option value="">입금 계좌 선택</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Category Picker Chips -->
         <div class="form-group margin-top-sm">
           <label class="form-label">🏷️ 카테고리 선택</label>

@@ -10,7 +10,10 @@ import {
   calculateUserBreakdown, 
   calculateFixedVsVariable, 
   calculateHistoricalTrends, 
-  filterTransactionsByMonth 
+  filterTransactionsByMonth,
+  calculateSpendingPace,
+  calculateSettlement,
+  calculateMonthOverMonth
 } from '../calculations.js';
 import { StorageManager } from '../storage.js';
 import { esc } from '../utils.js';
@@ -56,10 +59,14 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     const catBreakdown = calculateCategoryBreakdown(transactions, categories, currentMonthStr);
     const fv = calculateFixedVsVariable(transactions, currentMonthStr);
     const userBd = calculateUserBreakdown(transactions, currentMonthStr);
+    const pace = calculateSpendingPace(transactions, currentMonthStr);
+    const mom = calculateMonthOverMonth(transactions, currentMonthStr);
+    const settings = StorageManager.getSettings();
+    const settlement = calculateSettlement(transactions, currentMonthStr, settings.settlementMode);
 
     const monthTx = filterTransactionsByMonth(transactions, currentMonthStr).filter(t => t.type === 'expense');
 
-    // Calculate Peak Spending Day & Daily Average
+    // 지출 피크 날짜
     const dayMap = {};
     monthTx.forEach(t => {
       dayMap[t.date] = (dayMap[t.date] || 0) + Number(t.amount || 0);
@@ -68,28 +75,32 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     let maxDay = '-';
     let maxDayAmount = 0;
     Object.entries(dayMap).forEach(([date, amt]) => {
-      if (amt > maxDayAmount) {
-        maxDayAmount = amt;
-        maxDay = date;
-      }
+      if (amt > maxDayAmount) { maxDayAmount = amt; maxDay = date; }
     });
 
-    const daysInMonth = new Date(
-      parseInt(currentMonthStr.split('-')[0], 10),
-      parseInt(currentMonthStr.split('-')[1], 10),
-      0
-    ).getDate();
+    // 요일별 지출 패턴
+    const weekdayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const weekdayTotals = new Array(7).fill(0);
+    const weekdayCounts = new Array(7).fill(0);
+    monthTx.forEach(t => {
+      const d = new Date(t.date + 'T00:00:00');
+      if (isNaN(d)) return;
+      weekdayTotals[d.getDay()] += Number(t.amount || 0);
+      weekdayCounts[d.getDay()] += 1;
+    });
+    let topWeekday = 0;
+    weekdayTotals.forEach((v, i) => { if (v > weekdayTotals[topWeekday]) topWeekday = i; });
 
-    const dailyAvg = summary.totalExpense / daysInMonth;
-
-    const topCategory = catBreakdown.categories[0] ? catBreakdown.categories[0].name : '없음';
+    const momText = mom.expenseChangePct === null
+      ? `${esc(mom.prevMonthStr)} 데이터가 없어 비교할 수 없습니다.`
+      : `${esc(mom.basisLabel)} 지출이 ${mom.expenseChangePct >= 0 ? '증가' : '감소'} ${Math.abs(mom.expenseChangePct).toFixed(1)}% (${formatCurrency(Math.abs(mom.expenseDiff))})`;
 
     targetEl.innerHTML = `
       <div class="stats-cards-grid">
         <div class="card stat-metric-card">
           <span class="metric-icon">🏆</span>
           <div class="metric-title">가장 많이 쓴 카테고리</div>
-          <div class="metric-value text-indigo">${esc(topCategory)}</div>
+          <div class="metric-value text-indigo">${esc(catBreakdown.categories[0] ? catBreakdown.categories[0].name : '없음')}</div>
           <div class="metric-sub">${catBreakdown.categories[0] ? formatCurrency(catBreakdown.categories[0].amount) + ' (' + catBreakdown.categories[0].percentage.toFixed(1) + '%)' : ''}</div>
         </div>
 
@@ -103,24 +114,45 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
         <div class="card stat-metric-card">
           <span class="metric-icon">📆</span>
           <div class="metric-title">일평균 지출</div>
-          <div class="metric-value text-cyan">${formatCurrency(dailyAvg)}</div>
-          <div class="metric-sub">${daysInMonth}일 기준 계산</div>
+          <div class="metric-value text-cyan">${formatCurrency(pace.dailyAverage)}</div>
+          <div class="metric-sub">경과 ${pace.daysElapsed}일 기준${pace.isCurrent ? ' (진행 중)' : ''}</div>
         </div>
 
         <div class="card stat-metric-card">
-          <span class="metric-icon">🔒</span>
-          <div class="metric-title">고정비 비중</div>
-          <div class="metric-value text-amber">${formatPercent(fv.fixedRatio)}</div>
-          <div class="metric-sub">총 ${formatCurrency(fv.fixedAmount)}</div>
+          <span class="metric-icon">🔮</span>
+          <div class="metric-title">${pace.isCurrent ? '월말 예상 지출' : '고정비 비중'}</div>
+          <div class="metric-value text-amber">
+            ${pace.isCurrent ? formatCurrency(pace.projectedExpense) : formatPercent(fv.fixedRatio)}
+          </div>
+          <div class="metric-sub">
+            ${pace.isCurrent
+              ? `현재 속도 유지 시 · 예상 잔액 ${formatCurrency(pace.projectedBalance)}`
+              : `총 ${formatCurrency(fv.fixedAmount)}`}
+          </div>
         </div>
       </div>
 
       <div class="card dash-card margin-top">
         <h3 class="card-title">💡 이번 달 종합 재정 진단</h3>
         <ul class="insight-bullets">
-          <li>✨ <strong>이번 달 저축률:</strong> ${formatPercent(summary.savingsRate)} (수입 ${formatCurrency(summary.totalIncome)} 중 ${formatCurrency(summary.balance)} 저축)</li>
-          <li>👫 <strong>공동/개인비율:</strong> 공동생활비가 전체 지출의 ${summary.totalExpense > 0 ? ((userBd.sharedAmount / summary.totalExpense) * 100).toFixed(1) : 0}%를 차지합니다.</li>
-          <li>📌 <strong>고정비 vs 변동비:</strong> 고정 지출 ${formatCurrency(fv.fixedAmount)}, 변동 지출 ${formatCurrency(fv.variableAmount)}</li>
+          <li>📊 <strong>지출 추세:</strong> ${momText}</li>
+          <li>✨ <strong>가용 잔액률:</strong> ${formatPercent(summary.savingsRate)}
+              (수입 ${formatCurrency(summary.totalIncome)} 중 ${formatCurrency(summary.balance)} 남음)
+              ${pace.isCurrent ? `— 이 속도면 월말 ${formatPercent(pace.projectedSavingsRate)} 예상` : ''}</li>
+          <li>🤝 <strong>부부 정산:</strong>
+              ${settlement.sharedTotal === 0
+                ? '공동생활비 기록이 없습니다.'
+                : (settlement.settled
+                    ? `부담이 균형 상태입니다 (${esc(settlement.ratioBasis)}).`
+                    : `${settlement.fromUserId === 'husband' ? husbandName : wifeName} → ${settlement.toUserId === 'husband' ? husbandName : wifeName} <strong>${formatCurrency(settlement.amount)}</strong> (${esc(settlement.ratioBasis)})`)}</li>
+          <li>👫 <strong>공동/개인 비율:</strong> 공동생활비가 전체 지출의
+              ${summary.totalExpense > 0 ? ((userBd.sharedAmount / summary.totalExpense) * 100).toFixed(1) : 0}%를 차지합니다.</li>
+          <li>📌 <strong>고정비 vs 변동비:</strong> 고정 ${formatCurrency(fv.fixedAmount)} (${fv.fixedRatio.toFixed(1)}%),
+              변동 ${formatCurrency(fv.variableAmount)} — 고정비 비중이 높을수록 지출을 줄일 여지가 적습니다.</li>
+          <li>🗓️ <strong>요일 패턴:</strong>
+              ${weekdayTotals[topWeekday] > 0
+                ? `<strong>${weekdayNames[topWeekday]}요일</strong>에 가장 많이 씁니다 (${formatCurrency(weekdayTotals[topWeekday])}, ${weekdayCounts[topWeekday]}건)`
+                : '아직 분석할 지출이 없습니다.'}</li>
         </ul>
       </div>
     `;

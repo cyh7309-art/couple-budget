@@ -41,6 +41,11 @@ export class TransactionModal {
     this.wifePersonalBtn = this.modalEl.querySelector('#modal-shared-wife');
 
     this.paymentMethodSelect = this.modalEl.querySelector('#modal-select-payment');
+    this.accountSelect = this.modalEl.querySelector('#modal-select-account');
+    this.accountGroup = this.modalEl.querySelector('#modal-group-account');
+    this.fromAccountSelect = this.modalEl.querySelector('#modal-select-from');
+    this.toAccountSelect = this.modalEl.querySelector('#modal-select-to');
+    this.transferGroup = this.modalEl.querySelector('#modal-group-transfer');
     this.btnFixedToggle = this.modalEl.querySelector('#modal-btn-fixed');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
     this.categoryGroup = this.categoryGrid ? this.categoryGrid.closest('.form-group') : null;
@@ -100,9 +105,29 @@ export class TransactionModal {
       this.inputAmount.addEventListener('input', () => this.updateAmountHint());
     }
 
-    // ESC 닫기 / Enter 저장 (모달이 열려 있을 때만)
+    // ESC 닫기 / Enter 저장 / Tab 포커스 트랩 (모달이 열려 있을 때만)
     this.keyHandler = (e) => {
       if (!this.isOpen()) return;
+
+      if (e.key === 'Tab') {
+        // 모달 밖으로 포커스가 새어나가지 않게 가둡니다 (접근성)
+        const focusables = Array.from(this.modalEl.querySelectorAll(
+          'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter(el => !el.disabled && el.offsetParent !== null);
+        if (focusables.length === 0) return;
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         this.close();
@@ -118,6 +143,37 @@ export class TransactionModal {
     document.addEventListener('keydown', this.keyHandler);
   }
 
+  renderAccountOptions(accountId, fromId, toId) {
+    const accounts = StorageManager.getAccounts();
+    const opts = accounts.map(a => {
+      const icon = a.type === 'card' ? '💳' : (a.type === 'cash' ? '💵' : '🏦');
+      return `<option value="${esc(a.id)}">${icon} ${esc(a.name)}</option>`;
+    }).join('');
+
+    if (this.accountSelect) {
+      this.accountSelect.innerHTML = `<option value="">선택 안 함</option>${opts}`;
+      this.accountSelect.value = accountId || '';
+    }
+    if (this.fromAccountSelect) {
+      this.fromAccountSelect.innerHTML = `<option value="">출금 계좌 선택</option>${opts}`;
+      this.fromAccountSelect.value = fromId || '';
+    }
+    if (this.toAccountSelect) {
+      this.toAccountSelect.innerHTML = `<option value="">입금 계좌 선택</option>${opts}`;
+      this.toAccountSelect.value = toId || '';
+    }
+
+    // 계좌가 하나도 없으면 안내 문구로 대체
+    if (this.accountGroup) {
+      const label = this.accountGroup.querySelector('.form-label');
+      if (label) {
+        label.textContent = accounts.length === 0
+          ? '🏦 사용 계좌 ([목표/계좌] 탭에서 먼저 등록하세요)'
+          : '🏦 사용 계좌 (선택)';
+      }
+    }
+  }
+
   isOpen() {
     return this.modalEl.classList.contains('open');
   }
@@ -129,6 +185,7 @@ export class TransactionModal {
   }
 
   open(editingTxId = null, defaultMonthStr = null) {
+    this.lastFocused = document.activeElement;
     this.editingId = editingTxId;
     this.isSaving = false;
     this.setSaveButtonState(false);
@@ -140,6 +197,9 @@ export class TransactionModal {
     this.wifePersonalBtn.textContent = `👩 ${users.wife.name} 개인`;
 
     let paymentMethod = 'card';
+    let accountId = '';
+    let fromAccountId = '';
+    let toAccountId = '';
 
     if (editingTxId) {
       const tx = StorageManager.getTransactions().find(t => t.id === editingTxId);
@@ -151,6 +211,9 @@ export class TransactionModal {
         this.selectedCategoryId = tx.categoryId || '';
         this.isFixed = !!tx.isFixed;
         paymentMethod = tx.paymentMethod || 'card';
+        accountId = tx.accountId || '';
+        fromAccountId = tx.fromAccountId || '';
+        toAccountId = tx.toAccountId || '';
 
         this.inputAmount.value = tx.amount || '';
         this.inputDate.value = tx.date || todayLocalStr();
@@ -177,6 +240,7 @@ export class TransactionModal {
 
     // ✅ select 의 실제 DOM 값을 반드시 동기화 (미설정 시 항상 '카드'로 저장되던 버그)
     if (this.paymentMethodSelect) this.paymentMethodSelect.value = paymentMethod;
+    this.renderAccountOptions(accountId, fromAccountId, toAccountId);
 
     this.updateTypeTabs();
     this.updateUserButtons();
@@ -194,6 +258,11 @@ export class TransactionModal {
     this.editingId = null;
     this.isSaving = false;
     this.setSaveButtonState(false);
+    // 모달을 연 버튼으로 포커스를 되돌립니다
+    if (this.lastFocused && typeof this.lastFocused.focus === 'function') {
+      this.lastFocused.focus();
+      this.lastFocused = null;
+    }
   }
 
   setType(type) {
@@ -224,10 +293,15 @@ export class TransactionModal {
     if (this.fixedGroup) {
       this.fixedGroup.style.display = this.selectedType === 'expense' ? 'block' : 'none';
     }
+    const isTransfer = this.selectedType === 'transfer';
+
     // 이체는 카테고리 개념이 없으므로 아예 숨깁니다
     if (this.categoryGroup) {
-      this.categoryGroup.style.display = this.selectedType === 'transfer' ? 'none' : 'block';
+      this.categoryGroup.style.display = isTransfer ? 'none' : 'block';
     }
+    // 이체는 단일 계좌 대신 출금/입금 계좌를 받습니다
+    if (this.accountGroup) this.accountGroup.style.display = isTransfer ? 'none' : 'block';
+    if (this.transferGroup) this.transferGroup.style.display = isTransfer ? 'block' : 'none';
   }
 
   updateUserButtons() {
@@ -319,6 +393,21 @@ export class TransactionModal {
       return;
     }
 
+    const accountCount = StorageManager.getAccounts().length;
+    const fromId = this.fromAccountSelect ? this.fromAccountSelect.value : '';
+    const toId = this.toAccountSelect ? this.toAccountSelect.value : '';
+
+    if (this.selectedType === 'transfer' && accountCount > 0) {
+      if (!fromId || !toId) {
+        alert('이체는 출금 계좌와 입금 계좌를 모두 선택해주세요.');
+        return;
+      }
+      if (fromId === toId) {
+        alert('출금 계좌와 입금 계좌가 같습니다.');
+        return;
+      }
+    }
+
     this.isSaving = true;
     this.setSaveButtonState(true);
 
@@ -332,7 +421,10 @@ export class TransactionModal {
       sharedType: this.selectedSharedType,
       paymentMethod: this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card',
       isFixed: this.selectedType === 'expense' ? this.isFixed : false,
-      memo: this.inputMemo.value.trim()
+      memo: this.inputMemo.value.trim(),
+      accountId: this.selectedType === 'transfer' ? '' : (this.accountSelect ? this.accountSelect.value : ''),
+      fromAccountId: this.selectedType === 'transfer' ? fromId : '',
+      toAccountId: this.selectedType === 'transfer' ? toId : ''
     };
 
     try {

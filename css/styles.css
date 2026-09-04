@@ -3,34 +3,161 @@
    ========================================================================== */
 
 :root {
-  /* Color Palette */
+  color-scheme: light;
+
+  /* Surfaces */
+  --header-bg: #0f172a;
   --bg-primary: #0f172a;
-  --bg-card: #1e293b;
-  --bg-card-hover: #334155;
-  --bg-app: #f8fafc;
-  
+  --bg-app: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
+  --surface-hover: #e2e8f0;
+
+  /* Borders */
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Text */
   --text-main: #0f172a;
+  --text-strong: #334155;
+  --text-body: #475569;
   --text-muted: #64748b;
   --text-light: #94a3b8;
   --text-white: #ffffff;
-  
+
+  /* Brand & semantic */
   --color-primary: #6366f1;
   --color-primary-hover: #4f46e5;
   --color-income: #10b981;
   --color-expense: #f43f5e;
   --color-transfer: #06b6d4;
   --color-warning: #f59e0b;
-  
+  --color-info: #3b82f6;
+  --color-orange: #f97316;
+
+  /* Badge / pill pairs */
+  --badge-green-bg: #d1fae5;   --badge-green-fg: #065f46;
+  --badge-rose-bg: #ffe4e6;    --badge-rose-fg: #9f1239;
+  --badge-amber-bg: #fef3c7;   --badge-amber-fg: #92400e;   --badge-amber-border: #fcd34d;
+  --badge-indigo-bg: #e0e7ff;  --badge-indigo-fg: #3730a3;
+  --badge-sky-bg: #e0f2fe;     --badge-sky-fg: #0369a1;
+  --badge-pink-bg: #fce7f3;    --badge-pink-fg: #831843;
+  --badge-orange-bg: #ffedd5;  --badge-orange-fg: #9a3412;
+  --badge-cyan-bg: #cff4fc;    --badge-cyan-fg: #055160;
+
+  /* Auth gate gradient */
+  --auth-grad-1: #1e1b4b;
+  --auth-grad-2: #312e81;
+  --auth-grad-3: #4338ca;
+
   --border-radius-sm: 8px;
   --border-radius-md: 14px;
   --border-radius-lg: 20px;
-  
+
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.12);
-  
+
   --font-family: 'Plus Jakarta Sans', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
   --transition: all 0.2s ease-in-out;
+}
+
+/* --------------------------------------------------------------------------
+   다크 테마 — 토큰만 갈아끼웁니다.
+   'system' 설정일 때는 OS 설정을 따르고, 사용자가 직접 고르면 그 값이 우선합니다.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --header-bg: #060b16;
+    --bg-primary: #060b16;
+    --bg-app: #0b1220;
+    --surface: #151d2e;
+    --surface-2: #1b2437;
+    --surface-3: #202a3f;
+    --surface-hover: #2a3550;
+
+    --border: #2a3550;
+    --border-strong: #3b4867;
+
+    --text-main: #e8edf7;
+    --text-strong: #cbd5e1;
+    --text-body: #b6c2d6;
+    --text-muted: #94a3b8;
+    --text-light: #7c8aa3;
+
+    --color-primary: #818cf8;
+    --color-primary-hover: #6366f1;
+    --color-income: #34d399;
+    --color-expense: #fb7185;
+    --color-transfer: #22d3ee;
+    --color-warning: #fbbf24;
+
+    --badge-green-bg: rgba(16,185,129,0.18);   --badge-green-fg: #6ee7b7;
+    --badge-rose-bg: rgba(244,63,94,0.18);     --badge-rose-fg: #fda4af;
+    --badge-amber-bg: rgba(245,158,11,0.18);   --badge-amber-fg: #fcd34d;  --badge-amber-border: rgba(252,211,77,0.45);
+    --badge-indigo-bg: rgba(99,102,241,0.20);  --badge-indigo-fg: #a5b4fc;
+    --badge-sky-bg: rgba(14,165,233,0.18);     --badge-sky-fg: #7dd3fc;
+    --badge-pink-bg: rgba(236,72,153,0.18);    --badge-pink-fg: #f9a8d4;
+    --badge-orange-bg: rgba(249,115,22,0.18);  --badge-orange-fg: #fdba74;
+    --badge-cyan-bg: rgba(6,182,212,0.18);     --badge-cyan-fg: #67e8f9;
+
+    --auth-grad-1: #0b1220;
+    --auth-grad-2: #1e1b4b;
+    --auth-grad-3: #312e81;
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.45);
+    --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.6);
+  }
+}
+
+/* 사용자가 명시적으로 다크를 고른 경우 (시스템 설정과 무관하게 항상 적용) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --header-bg: #060b16;
+  --bg-primary: #060b16;
+  --bg-app: #0b1220;
+  --surface: #151d2e;
+  --surface-2: #1b2437;
+  --surface-3: #202a3f;
+  --surface-hover: #2a3550;
+
+  --border: #2a3550;
+  --border-strong: #3b4867;
+
+  --text-main: #e8edf7;
+  --text-strong: #cbd5e1;
+  --text-body: #b6c2d6;
+  --text-muted: #94a3b8;
+  --text-light: #7c8aa3;
+
+  --color-primary: #818cf8;
+  --color-primary-hover: #6366f1;
+  --color-income: #34d399;
+  --color-expense: #fb7185;
+  --color-transfer: #22d3ee;
+  --color-warning: #fbbf24;
+
+  --badge-green-bg: rgba(16,185,129,0.18);   --badge-green-fg: #6ee7b7;
+  --badge-rose-bg: rgba(244,63,94,0.18);     --badge-rose-fg: #fda4af;
+  --badge-amber-bg: rgba(245,158,11,0.18);   --badge-amber-fg: #fcd34d;  --badge-amber-border: rgba(252,211,77,0.45);
+  --badge-indigo-bg: rgba(99,102,241,0.20);  --badge-indigo-fg: #a5b4fc;
+  --badge-sky-bg: rgba(14,165,233,0.18);     --badge-sky-fg: #7dd3fc;
+  --badge-pink-bg: rgba(236,72,153,0.18);    --badge-pink-fg: #f9a8d4;
+  --badge-orange-bg: rgba(249,115,22,0.18);  --badge-orange-fg: #fdba74;
+  --badge-cyan-bg: rgba(6,182,212,0.18);     --badge-cyan-fg: #67e8f9;
+
+  --auth-grad-1: #0b1220;
+  --auth-grad-2: #1e1b4b;
+  --auth-grad-3: #312e81;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.45);
+  --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.6);
 }
 
 /* Reset & Base */
@@ -42,7 +169,7 @@
 
 body {
   font-family: var(--font-family);
-  background-color: #f1f5f9;
+  background-color: var(--bg-app);
   color: var(--text-main);
   line-height: 1.5;
   min-height: 100vh;
@@ -52,13 +179,13 @@ body {
 }
 
 /* Common Typography & Colors */
-.text-positive { color: #10b981; font-weight: 600; }
-.text-negative { color: #f43f5e; font-weight: 600; }
-.text-emerald { color: #10b981; }
-.text-rose { color: #f43f5e; }
-.text-indigo { color: #6366f1; }
-.text-cyan { color: #06b6d4; }
-.text-amber { color: #f59e0b; }
+.text-positive { color: var(--color-income); font-weight: 600; }
+.text-negative { color: var(--color-expense); font-weight: 600; }
+.text-emerald { color: var(--color-income); }
+.text-rose { color: var(--color-expense); }
+.text-indigo { color: var(--color-primary); }
+.text-cyan { color: var(--color-transfer); }
+.text-amber { color: var(--color-warning); }
 .text-muted { color: var(--text-muted); font-size: 0.85rem; }
 
 /* Header Component */
@@ -93,19 +220,19 @@ body {
 
 .cloud-badge.badge-connected {
   background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  color: var(--color-income);
   border: 1px solid rgba(16, 185, 129, 0.4);
 }
 
 .cloud-badge.badge-error {
   background: rgba(244, 63, 94, 0.2);
-  color: #f43f5e;
+  color: var(--color-expense);
   border: 1px solid rgba(244, 63, 94, 0.5);
 }
 
 .cloud-badge.badge-offline {
   background: rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
+  color: var(--text-light);
   border: 1px solid rgba(148, 163, 184, 0.4);
 }
 
@@ -158,7 +285,7 @@ body {
 
 .btn-today-chip {
   background: var(--color-primary);
-  color: white;
+  color: var(--text-white);
   border: none;
   padding: 3px 10px;
   border-radius: 12px;
@@ -173,8 +300,8 @@ body {
 }
 
 .btn-header-add {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: white;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--text-white);
   border: none;
   padding: 8px 16px;
   border-radius: var(--border-radius-sm);
@@ -199,8 +326,8 @@ body {
 /* Sidebar (Desktop) */
 .sidebar {
   width: 240px;
-  background: white;
-  border-right: 1px solid #e2e8f0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -221,7 +348,7 @@ body {
   border-radius: var(--border-radius-sm);
   border: none;
   background: transparent;
-  color: #475569;
+  color: var(--text-body);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -231,18 +358,18 @@ body {
 }
 
 .nav-item:hover {
-  background: #f1f5f9;
+  background: var(--surface-3);
   color: var(--text-main);
 }
 
 .nav-item.active {
-  background: #e0e7ff;
+  background: var(--badge-indigo-bg);
   color: var(--color-primary);
 }
 
 .sidebar-footer {
   padding-top: 1rem;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--surface-3);
 }
 
 .user-badge-row {
@@ -271,8 +398,8 @@ body {
   left: 0;
   right: 0;
   height: 65px;
-  background: white;
-  border-top: 1px solid #e2e8f0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   z-index: 100;
   justify-content: space-around;
   align-items: center;
@@ -286,7 +413,7 @@ body {
   justify-content: center;
   border: none;
   background: transparent;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -312,8 +439,8 @@ body {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: white;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--text-white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -328,11 +455,11 @@ body {
 
 /* Cards & Containers */
 .card {
-  background: white;
+  background: var(--surface);
   border-radius: var(--border-radius-md);
   padding: 1.25rem;
   box-shadow: var(--shadow-sm);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   transition: var(--transition);
 }
 
@@ -441,14 +568,14 @@ body {
 }
 
 .cat-icon-badge {
-  background: #f1f5f9;
+  background: var(--surface-3);
   padding: 4px 8px;
   border-radius: 6px;
 }
 
 .progress-track {
   height: 8px;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
@@ -461,7 +588,7 @@ body {
 }
 
 .progress-fill.caution { background-color: var(--color-warning); }
-.progress-fill.warning { background-color: #f97316; }
+.progress-fill.warning { background-color: var(--color-orange); }
 .progress-fill.over { background-color: var(--color-expense); }
 
 /* Badges */
@@ -475,20 +602,20 @@ body {
   gap: 3px;
 }
 
-.badge-normal { background: #d1fae5; color: #065f46; }
-.badge-caution { background: #fef3c7; color: #92400e; }
-.badge-warning { background: #ffedd5; color: #9a3412; }
-.badge-over { background: #ffe4e6; color: #9f1239; }
+.badge-normal { background: var(--badge-green-bg); color: var(--badge-green-fg); }
+.badge-caution { background: var(--badge-amber-bg); color: var(--badge-amber-fg); }
+.badge-warning { background: var(--badge-orange-bg); color: var(--badge-orange-fg); }
+.badge-over { background: var(--badge-rose-bg); color: var(--badge-rose-fg); }
 
-.badge-shared { background: #e0e7ff; color: #3730a3; }
-.badge-husband { background: #cff4fc; color: #055160; }
-.badge-wife { background: #fce7f3; color: #831843; }
+.badge-shared { background: var(--badge-indigo-bg); color: var(--badge-indigo-fg); }
+.badge-husband { background: var(--badge-cyan-bg); color: var(--badge-cyan-fg); }
+.badge-wife { background: var(--badge-pink-bg); color: var(--badge-pink-fg); }
 
-.badge-fixed { background: #f1f5f9; color: #475569; }
-.badge-variable { background: #e0f2fe; color: #0369a1; }
+.badge-fixed { background: var(--surface-3); color: var(--text-body); }
+.badge-variable { background: var(--badge-sky-bg); color: var(--badge-sky-fg); }
 
-.badge-income { background: #d1fae5; color: #065f46; }
-.badge-expense { background: #ffe4e6; color: #9f1239; }
+.badge-income { background: var(--badge-green-bg); color: var(--badge-green-fg); }
+.badge-expense { background: var(--badge-rose-bg); color: var(--badge-rose-fg); }
 
 /* Widgets Row */
 .widgets-row {
@@ -511,15 +638,15 @@ body {
 
 .fixed-var-bar {
   height: 10px;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 6px;
   display: flex;
   overflow: hidden;
 }
 
 .fv-segment { height: 100%; }
-.fv-fixed { background: #475569; }
-.fv-variable { background: #3b82f6; }
+.fv-fixed { background: var(--text-body); }
+.fv-variable { background: var(--color-info); }
 
 .fv-legend, .user-split-list {
   font-size: 0.8rem;
@@ -535,8 +662,8 @@ body {
   display: inline-block;
   margin-right: 4px;
 }
-.dot-fixed { background: #475569; }
-.dot-variable { background: #3b82f6; }
+.dot-fixed { background: var(--text-body); }
+.dot-variable { background: var(--color-info); }
 
 .split-item {
   display: flex;
@@ -556,7 +683,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--surface-3);
 }
 
 .tx-row-item:last-child { border-bottom: none; }
@@ -623,11 +750,11 @@ body {
   width: 100%;
   padding: 10px 12px;
   border-radius: var(--border-radius-sm);
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   font-family: inherit;
   font-size: 0.9rem;
   outline: none;
-  background: white;
+  background: var(--surface);
   transition: var(--transition);
 }
 
@@ -726,7 +853,7 @@ body {
 }
 
 .btn-icon:hover {
-  background: #f1f5f9;
+  background: var(--surface-3);
 }
 
 /* Statistics View Tabs */
@@ -755,7 +882,7 @@ body {
 
 .sub-tab-btn.active {
   background: var(--color-primary);
-  color: white;
+  color: var(--text-white);
 }
 
 .stats-cards-grid {
@@ -816,7 +943,7 @@ body {
   justify-content: space-between;
   font-size: 0.9rem;
   padding: 8px 12px;
-  background: #f8fafc;
+  background: var(--surface-2);
   border-radius: var(--border-radius-sm);
 }
 
@@ -837,8 +964,8 @@ body {
 }
 
 .account-item-card {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--border-radius-sm);
   padding: 12px;
   display: flex;
@@ -866,7 +993,7 @@ body {
 .total-asset-row {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -886,8 +1013,8 @@ body {
 }
 
 .goal-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--border-radius-md);
   padding: 1.25rem;
   display: flex;
@@ -937,9 +1064,9 @@ body {
   transition: var(--transition);
 }
 
-.btn-primary-sm { background: var(--color-primary); color: white; }
-.btn-secondary-sm { background: #e2e8f0; color: var(--text-main); }
-.btn-danger-sm { background: #ffe4e6; color: #9f1239; }
+.btn-primary-sm { background: var(--color-primary); color: var(--text-white); }
+.btn-secondary-sm { background: var(--border); color: var(--text-main); }
+.btn-danger-sm { background: var(--badge-rose-bg); color: var(--badge-rose-fg); }
 
 /* Settings View */
 .settings-card {
@@ -966,7 +1093,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #f8fafc;
+  background: var(--surface-2);
   border-radius: var(--border-radius-sm);
 }
 
@@ -985,7 +1112,7 @@ body {
 }
 
 .cat-manage-card {
-  background: #f8fafc;
+  background: var(--surface-2);
   padding: 10px;
   border-radius: var(--border-radius-sm);
   display: flex;
@@ -1031,7 +1158,7 @@ body {
 }
 
 .modal-card {
-  background: white;
+  background: var(--surface);
   width: 100%;
   max-width: 520px;
   border-radius: var(--border-radius-lg);
@@ -1050,7 +1177,7 @@ body {
 
 .modal-header {
   padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--surface-3);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1075,7 +1202,7 @@ body {
 
 .modal-tabs {
   display: flex;
-  background: #f1f5f9;
+  background: var(--surface-3);
   padding: 4px;
   border-radius: var(--border-radius-sm);
   gap: 4px;
@@ -1094,7 +1221,7 @@ body {
 }
 
 .m-tab.active {
-  background: white;
+  background: var(--surface);
   color: var(--text-main);
   box-shadow: var(--shadow-sm);
 }
@@ -1102,8 +1229,8 @@ body {
 .amount-input-box {
   display: flex;
   align-items: center;
-  background: #f8fafc;
-  border: 2px solid #cbd5e1;
+  background: var(--surface-2);
+  border: 2px solid var(--border-strong);
   border-radius: var(--border-radius-md);
   padding: 8px 16px;
 }
@@ -1148,8 +1275,8 @@ body {
 .chip-cat {
   padding: 8px 14px;
   border-radius: 20px;
-  border: 1px solid #cbd5e1;
-  background: white;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -1161,7 +1288,7 @@ body {
 
 .chip-cat.active {
   background: var(--color-primary);
-  color: white;
+  color: var(--text-white);
   border-color: var(--color-primary);
 }
 
@@ -1174,8 +1301,8 @@ body {
   flex: 1;
   padding: 10px;
   border-radius: var(--border-radius-sm);
-  border: 1px solid #cbd5e1;
-  background: white;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
@@ -1183,7 +1310,7 @@ body {
 }
 
 .btn-toggle.active {
-  background: #e0e7ff;
+  background: var(--badge-indigo-bg);
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -1192,21 +1319,21 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: var(--border-radius-sm);
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
   font-weight: 600;
   cursor: pointer;
 }
 
 .btn-fixed-toggle.active {
-  background: #fef3c7;
-  border-color: #f59e0b;
-  color: #92400e;
+  background: var(--badge-amber-bg);
+  border-color: var(--color-warning);
+  color: var(--badge-amber-fg);
 }
 
 .modal-footer {
   padding: 1rem 1.5rem;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--surface-3);
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -1221,8 +1348,8 @@ body {
   border: none;
 }
 
-.btn-primary { background: var(--color-primary); color: white; }
-.btn-secondary { background: #e2e8f0; color: var(--text-main); }
+.btn-primary { background: var(--color-primary); color: var(--text-white); }
+.btn-secondary { background: var(--border); color: var(--text-main); }
 
 .empty-state {
   display: flex;
@@ -1279,9 +1406,9 @@ body {
 
 /* 저장 대기(오프라인 큐) 뱃지 */
 .cloud-badge.badge-warning-sync {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fcd34d;
+  background: var(--badge-amber-bg);
+  color: var(--badge-amber-fg);
+  border: 1px solid var(--badge-amber-border);
 }
 
 /* 거래 목록 필터 헤더 우측 그룹 */
@@ -1327,14 +1454,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: linear-gradient(160deg, #1e1b4b 0%, #312e81 55%, #4338ca 100%);
+  background: linear-gradient(160deg, var(--auth-grad-1) 0%, var(--auth-grad-2) 55%, var(--auth-grad-3) 100%);
   overflow-y: auto;
 }
 
 .auth-card {
   width: 100%;
   max-width: 400px;
-  background: #ffffff;
+  background: var(--surface);
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 2rem 1.75rem;
@@ -1422,4 +1549,233 @@ button:disabled {
 /* iOS 홈 인디케이터 영역 확보 */
 .bottom-nav {
   padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* ==========================================================================
+   신규 컴포넌트 — 정산 / 지출속도 / 반복거래 / 계좌 폼
+   ========================================================================== */
+
+/* 증감률 옆의 비교 기준 문구 */
+.basis-label {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-light);
+}
+
+/* ------------------------------- 정산 카드 ------------------------------- */
+.settlement-card .settle-headline {
+  padding: 0.9rem 1rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--badge-indigo-bg);
+  color: var(--badge-indigo-fg);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.settlement-card .settle-headline.settled {
+  background: var(--badge-green-bg);
+  color: var(--badge-green-fg);
+}
+
+.settle-amount {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.settle-grid {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.settle-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--text-body);
+}
+
+.settle-row:last-child { border-bottom: none; padding-bottom: 0; }
+.settle-row strong { color: var(--text-main); font-size: 1rem; }
+
+.settle-should {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+
+.settle-bar {
+  display: flex;
+  height: 10px;
+  margin-top: 0.9rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+
+.settle-seg { height: 100%; transition: var(--transition); }
+.settle-h { background: var(--color-transfer); }
+.settle-w { background: #ec4899; }
+
+.settle-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dot-h { background: var(--color-transfer); }
+.dot-w { background: #ec4899; }
+
+/* ----------------------------- 지출 속도 카드 ---------------------------- */
+.pace-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.pace-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.88rem;
+  color: var(--text-body);
+}
+
+.pace-row strong { font-size: 1rem; color: var(--text-main); }
+
+.pace-note {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.76rem;
+  color: var(--text-light);
+}
+
+/* -------------------------- 예산 페이스 안내 문구 ------------------------- */
+.budget-pace-note {
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.78rem;
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+.budget-pace-note.over,
+.budget-pace-note.projected_over {
+  background: var(--badge-rose-bg);
+  color: var(--badge-rose-fg);
+  font-weight: 600;
+}
+
+.budget-pace-note.caution {
+  background: var(--badge-amber-bg);
+  color: var(--badge-amber-fg);
+  font-weight: 600;
+}
+
+/* ------------------------------ 반복 거래 -------------------------------- */
+.recurring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.recurring-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-2);
+}
+
+.recurring-item.inactive { opacity: 0.55; }
+
+.rec-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  color: var(--text-main);
+}
+
+.rec-meta {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.rec-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.rec-amount { color: var(--text-main); white-space: nowrap; }
+.rec-actions { display: flex; gap: 0.15rem; }
+
+/* --------------------------- 계좌 / 반복 입력 폼 -------------------------- */
+.account-form {
+  margin: 0.85rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-2);
+}
+
+.account-form .form-group { margin-bottom: 0.7rem; }
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.acc-sub {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.acc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  margin-top: 0.5rem;
+}
+
+.warn-note {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--badge-amber-bg);
+  color: var(--badge-amber-fg);
+}
+
+.cat-manage-actions { display: flex; gap: 0.15rem; }
+
+@media (max-width: 768px) {
+  .recurring-item { flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+  .rec-right { width: 100%; justify-content: space-between; }
+  .settle-row { grid-template-columns: 1fr; }
 }
