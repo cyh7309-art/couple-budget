@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>우리집 가계부 — 부부 재정 관리 대시보드</title>
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js CDN for interactive financial graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Application Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- App Shell Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <span class="logo-icon">💑</span>
+        <h1 class="brand-title">우리집 가계부</h1>
+      </div>
+    </div>
+
+    <!-- Month Navigation Bar -->
+    <div class="month-selector">
+      <button class="btn-month-nav" id="btn-prev-month" title="이전 달">&lt;</button>
+      <div class="current-month-display" id="display-current-month">2026년 9월</div>
+      <button class="btn-month-nav" id="btn-next-month" title="다음 달">&gt;</button>
+      <button class="btn-today-chip" id="btn-reset-today">오늘</button>
+    </div>
+
+    <div class="header-right">
+      <button class="btn-header-add" id="btn-header-quick-add">+ 거래 입력</button>
+    </div>
+  </header>
+
+  <!-- App Body Layout (Sidebar + Main Content) -->
+  <div class="app-body">
+    <!-- Desktop Left Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-text">홈 대시보드</span>
+        </button>
+        <button class="nav-item" data-tab="transactions">
+          <span class="nav-icon">💸</span>
+          <span class="nav-text">거래 목록</span>
+        </button>
+        <button class="nav-item" data-tab="statistics">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">통계 분석</span>
+        </button>
+        <button class="nav-item" data-tab="goals">
+          <span class="nav-icon">🎯</span>
+          <span class="nav-text">재정 목표/계좌</span>
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text">설정/관리</span>
+        </button>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="user-badge-row" id="sidebar-user-badges">
+          <span>👨 남편</span>
+          <span>·</span>
+          <span>👩 아내</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="view-container" id="main-view-container">
+        <!-- Rendered view content injects here dynamically -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="bottom-nav">
+    <button class="b-nav-item active" data-tab="dashboard">
+      <span class="b-nav-icon">🏠</span>
+      <span class="b-nav-label">홈</span>
+    </button>
+    <button class="b-nav-item" data-tab="transactions">
+      <span class="b-nav-icon">💸</span>
+      <span class="b-nav-label">거래</span>
+    </button>
+    
+    <!-- Floating Center Action Button -->
+    <button class="b-nav-item fab-center-item" id="btn-fab-add">
+      <div class="fab-circle">
+        <span>➕</span>
+      </div>
+      <span class="b-nav-label">기록</span>
+    </button>
+
+    <button class="b-nav-item" data-tab="statistics">
+      <span class="b-nav-icon">📊</span>
+      <span class="b-nav-label">통계</span>
+    </button>
+    <button class="b-nav-item" data-tab="goals">
+      <span class="b-nav-icon">🎯</span>
+      <span class="b-nav-label">목표</span>
+    </button>
+    <button class="b-nav-item" data-tab="settings">
+      <span class="b-nav-icon">⚙️</span>
+      <span class="b-nav-label">설정</span>
+    </button>
+  </nav>
+
+  <!-- Quick Entry & Edit Modal -->
+  <div class="modal-overlay" id="transaction-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title-text">⚡ 빠른 거래 등록</h3>
+        <button class="btn-modal-close" id="modal-btn-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Type Selector Tabs -->
+        <div class="modal-tabs">
+          <button class="m-tab active" id="tab-modal-expense">💸 지출</button>
+          <button class="m-tab" id="tab-modal-income">💰 수입</button>
+          <button class="m-tab" id="tab-modal-transfer">🔄 이체</button>
+        </div>
+
+        <!-- Big Touch Amount Input -->
+        <div class="amount-input-box">
+          <span class="currency-symbol">₩</span>
+          <input type="number" id="modal-input-amount" class="amount-field" placeholder="0" autofocus />
+        </div>
+
+        <!-- Date & Payment Method -->
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">📅 거래 날짜</label>
+            <input type="date" id="modal-input-date" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">💳 결제 수단</label>
+            <select id="modal-select-payment" class="form-select">
+              <option value="card">💳 신용/체크카드</option>
+              <option value="bank">🏦 계좌이체</option>
+              <option value="cash">💵 현금</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Category Picker Chips -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">🏷️ 카테고리 선택</label>
+          <div class="chips-grid" id="modal-category-grid">
+            <!-- Injected via transactionModal.js -->
+          </div>
+        </div>
+
+        <!-- User Selector (Husband vs Wife) -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">👤 누가 거래했나요?</label>
+          <div class="btn-group-row">
+            <button class="btn-toggle active" id="modal-user-husband">👨 남편</button>
+            <button class="btn-toggle" id="modal-user-wife">👩 아내</button>
+          </div>
+        </div>
+
+        <!-- Shared / Personal Selector -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">👫 공동 vs 개인 구분</label>
+          <div class="btn-group-row">
+            <button class="btn-toggle active" id="modal-shared-common">👫 공동생활비</button>
+            <button class="btn-toggle" id="modal-shared-husband">👨 남편 개인</button>
+            <button class="btn-toggle" id="modal-shared-wife">👩 아내 개인</button>
+          </div>
+        </div>
+
+        <!-- Fixed vs Variable Toggle (For Expense) -->
+        <div class="form-group margin-top-sm" id="modal-group-fixed">
+          <label class="form-label">📌 지출 유형 (고정비/변동비)</label>
+          <button class="btn-fixed-toggle" id="modal-btn-fixed">🌊 변동지출 (변동)</button>
+        </div>
+
+        <!-- Memo Input -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">📝 메모</label>
+          <input type="text" id="modal-input-memo" class="form-input" placeholder="예: 스타벅스 커피, 이마트 장보기" />
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-btn-cancel">취소</button>
+        <button class="btn-primary" id="modal-btn-save">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entry Script -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
