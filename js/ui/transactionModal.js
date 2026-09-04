@@ -234,7 +234,7 @@ export class TransactionModal {
     });
   }
 
-  save() {
+  async save() {
     const amountVal = Number(this.inputAmount.value);
     if (!amountVal || isNaN(amountVal) || amountVal <= 0) {
       alert('금액을 올바르게 입력해주세요 (0원 초과).');
@@ -263,9 +263,9 @@ export class TransactionModal {
     };
 
     if (this.editingId) {
-      StorageManager.updateTransaction(this.editingId, txData);
+      await StorageManager.updateTransaction(this.editingId, txData);
     } else {
-      StorageManager.addTransaction(txData);
+      await StorageManager.addTransaction(txData);
     }
 
     this.close();

@@ -170,11 +170,11 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
     });
 
     listContainer.querySelectorAll('.btn-del-tx').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const id = btn.getAttribute('data-id');
         if (confirm('이 거래 항목을 정말로 삭제하시겠습니까?')) {
-          StorageManager.deleteTransaction(id);
+          await StorageManager.deleteTransaction(id);
           refreshApp();
         }
       });

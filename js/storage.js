@@ -36,7 +36,7 @@ export class StorageManager {
       localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(DEFAULT_ACCOUNTS));
     }
 
-    // Trigger silent background cloud sync
+    // Background Cloud Sync on start
     this.syncFromCloud();
   }
 
@@ -44,13 +44,15 @@ export class StorageManager {
     try {
       // 1. Transactions
       const cloudTx = await SupabaseSyncEngine.fetchTransactions();
-      if (cloudTx && Array.isArray(cloudTx) && cloudTx.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(cloudTx));
-      } else {
-        // Seed initial transactions to cloud if empty
-        const localTx = this.getTransactions();
-        for (const tx of localTx) {
-          await SupabaseSyncEngine.upsertTransaction(tx);
+      if (cloudTx && Array.isArray(cloudTx)) {
+        if (cloudTx.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(cloudTx));
+        } else {
+          // If Supabase table is empty, upload local transactions
+          const localTx = this.getTransactions();
+          for (const tx of localTx) {
+            await SupabaseSyncEngine.upsertTransaction(tx);
+          }
         }
       }
 
@@ -73,8 +75,11 @@ export class StorageManager {
       if (cloudGoals && Array.isArray(cloudGoals) && cloudGoals.length > 0) {
         localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(cloudGoals));
       }
+
+      return true;
     } catch (e) {
-      console.warn('Cloud sync info:', e.message);
+      console.warn('Cloud sync from server error:', e.message);
+      return false;
     }
   }
 
@@ -83,9 +88,9 @@ export class StorageManager {
     return JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS)) || DEFAULT_USERS;
   }
 
-  static saveUsers(users) {
+  static async saveUsers(users) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    SupabaseSyncEngine.saveUsers(users);
+    await SupabaseSyncEngine.saveUsers(users);
   }
 
   // --- Categories ---
@@ -93,9 +98,9 @@ export class StorageManager {
     return JSON.parse(localStorage.getItem(STORAGE_KEYS.CATEGORIES)) || DEFAULT_CATEGORIES;
   }
 
-  static saveCategories(categories) {
+  static async saveCategories(categories) {
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-    SupabaseSyncEngine.saveCategories(categories);
+    await SupabaseSyncEngine.saveCategories(categories);
   }
 
   // --- Transactions ---
@@ -107,7 +112,7 @@ export class StorageManager {
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
   }
 
-  static addTransaction(txData) {
+  static async addTransaction(txData) {
     const transactions = this.getTransactions();
     const newTx = {
       id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -118,12 +123,12 @@ export class StorageManager {
     transactions.unshift(newTx);
     this.saveTransactions(transactions);
 
-    // Sync to Supabase
-    SupabaseSyncEngine.upsertTransaction(newTx);
+    // Immediate sync to Supabase Cloud DB
+    await SupabaseSyncEngine.upsertTransaction(newTx);
     return newTx;
   }
 
-  static updateTransaction(id, txData) {
+  static async updateTransaction(id, txData) {
     const transactions = this.getTransactions();
     const index = transactions.findIndex(t => t.id === id);
     if (index !== -1) {
@@ -134,20 +139,20 @@ export class StorageManager {
       };
       this.saveTransactions(transactions);
 
-      // Sync to Supabase
-      SupabaseSyncEngine.upsertTransaction(transactions[index]);
+      // Immediate sync to Supabase Cloud DB
+      await SupabaseSyncEngine.upsertTransaction(transactions[index]);
       return transactions[index];
     }
     return null;
   }
 
-  static deleteTransaction(id) {
+  static async deleteTransaction(id) {
     let transactions = this.getTransactions();
     transactions = transactions.filter(t => t.id !== id);
     this.saveTransactions(transactions);
 
-    // Sync to Supabase
-    SupabaseSyncEngine.deleteTransaction(id);
+    // Immediate sync to Supabase Cloud DB
+    await SupabaseSyncEngine.deleteTransaction(id);
   }
 
   // --- Budgets ---
@@ -159,7 +164,7 @@ export class StorageManager {
     localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
   }
 
-  static setCategoryBudget(month, categoryId, amount) {
+  static async setCategoryBudget(month, categoryId, amount) {
     const budgets = this.getBudgets();
     const existingIndex = budgets.findIndex(b => b.month === month && b.categoryId === categoryId);
     let budgetObj;
@@ -178,7 +183,7 @@ export class StorageManager {
     this.saveBudgets(budgets);
 
     // Sync to Supabase
-    SupabaseSyncEngine.upsertBudget(budgetObj);
+    await SupabaseSyncEngine.upsertBudget(budgetObj);
   }
 
   // --- Goals ---
@@ -186,9 +191,9 @@ export class StorageManager {
     return JSON.parse(localStorage.getItem(STORAGE_KEYS.GOALS)) || DEFAULT_GOALS;
   }
 
-  static saveGoals(goals) {
+  static async saveGoals(goals) {
     localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(goals));
-    SupabaseSyncEngine.saveGoals(goals);
+    await SupabaseSyncEngine.saveGoals(goals);
   }
 
   // --- Accounts ---
@@ -201,7 +206,7 @@ export class StorageManager {
   }
 
   // --- Reset & Backup / Restore ---
-  static resetToSampleData() {
+  static async resetToSampleData() {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(generateInitialTransactions()));
@@ -209,12 +214,13 @@ export class StorageManager {
     localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(DEFAULT_GOALS));
     localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(DEFAULT_ACCOUNTS));
 
-    // Upload default sample dataset to Supabase
     const transactions = generateInitialTransactions();
-    transactions.forEach(t => SupabaseSyncEngine.upsertTransaction(t));
-    SupabaseSyncEngine.saveUsers(DEFAULT_USERS);
-    SupabaseSyncEngine.saveCategories(DEFAULT_CATEGORIES);
-    SupabaseSyncEngine.saveGoals(DEFAULT_GOALS);
+    for (const t of transactions) {
+      await SupabaseSyncEngine.upsertTransaction(t);
+    }
+    await SupabaseSyncEngine.saveUsers(DEFAULT_USERS);
+    await SupabaseSyncEngine.saveCategories(DEFAULT_CATEGORIES);
+    await SupabaseSyncEngine.saveGoals(DEFAULT_GOALS);
   }
 
   static clearAllData() {
@@ -240,20 +246,24 @@ export class StorageManager {
     return JSON.stringify(backupObj, null, 2);
   }
 
-  static importBackupData(jsonString) {
+  static async importBackupData(jsonString) {
     try {
       const data = JSON.parse(jsonString);
-      if (data.users) this.saveUsers(data.users);
-      if (data.categories) this.saveCategories(data.categories);
+      if (data.users) await this.saveUsers(data.users);
+      if (data.categories) await this.saveCategories(data.categories);
       if (data.transactions) {
         this.saveTransactions(data.transactions);
-        data.transactions.forEach(t => SupabaseSyncEngine.upsertTransaction(t));
+        for (const t of data.transactions) {
+          await SupabaseSyncEngine.upsertTransaction(t);
+        }
       }
       if (data.budgets) {
         this.saveBudgets(data.budgets);
-        data.budgets.forEach(b => SupabaseSyncEngine.upsertBudget(b));
+        for (const b of data.budgets) {
+          await SupabaseSyncEngine.upsertBudget(b);
+        }
       }
-      if (data.goals) this.saveGoals(data.goals);
+      if (data.goals) await this.saveGoals(data.goals);
       if (data.accounts) this.saveAccounts(data.accounts);
       return true;
     } catch (e) {

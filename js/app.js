@@ -1,10 +1,10 @@
 /**
- * Main Application Orchestrator & Router with Supabase Realtime Sync
+ * Main Application Orchestrator & Router with Supabase Realtime Sync & Diagnostics
  * Couple Finance Dashboard ("우리집 가계부")
  */
 
 import { StorageManager } from './storage.js';
-import { SupabaseSyncEngine } from './supabaseClient.js';
+import { SupabaseSyncEngine, getConnectionStatus } from './supabaseClient.js';
 import { getPreviousMonthStr, getNextMonthStr } from './calculations.js';
 
 import { renderDashboardView } from './ui/dashboardView.js';
@@ -37,13 +37,47 @@ class CoupleFinanceApp {
     StorageManager.init();
   }
 
-  initRealtimeSync() {
+  async initRealtimeSync() {
+    // Check initial connection status
+    await SupabaseSyncEngine.checkConnection();
+    this.updateCloudBadge();
+
     // Subscribe to Supabase Realtime changes across devices
     SupabaseSyncEngine.subscribeToChanges(async (payload) => {
       console.log('⚡ Real-time update from partner device:', payload);
       await StorageManager.syncFromCloud();
       this.render();
     });
+  }
+
+  updateCloudBadge() {
+    const badgeEl = document.getElementById('cloud-sync-badge');
+    if (!badgeEl) return;
+
+    const status = getConnectionStatus();
+    if (status === 'connected') {
+      badgeEl.className = 'cloud-badge badge-connected';
+      badgeEl.innerHTML = '☁️ 실시간 연동됨';
+      badgeEl.title = 'Supabase 중앙 DB와 실시간 연동 중입니다.';
+      badgeEl.onclick = null;
+    } else if (status === 'missing_tables') {
+      badgeEl.className = 'cloud-badge badge-error';
+      badgeEl.innerHTML = '⚠️ DB 테이블 생성 필요 (클릭)';
+      badgeEl.title = 'Supabase SQL Editor에서 쿼리를 실행하여 테이블을 생성해주세요.';
+      badgeEl.onclick = () => {
+        alert(
+          'Supabase 프로젝트에 아직 가계부 데이터 테이블이 생성되지 않아 연동이 일시 중지되었습니다!\n\n' +
+          '해결 방법 (30초 소요):\n' +
+          '1. Supabase 접속 -> SQL Editor 이동\n' +
+          '2. 안내해 드린 SQL 생성 스크립트를 복사하여 실행(Run)해주시면 바로 연동됩니다.'
+        );
+      };
+    } else {
+      badgeEl.className = 'cloud-badge badge-offline';
+      badgeEl.innerHTML = '📱 로컬 모드';
+      badgeEl.title = '네트워크 연결 또는 Supabase 설정을 확인해주세요.';
+      badgeEl.onclick = null;
+    }
   }
 
   initDOM() {
@@ -71,7 +105,6 @@ class CoupleFinanceApp {
   }
 
   bindGlobalEvents() {
-    // Month navigation
     this.btnPrevMonth.addEventListener('click', () => {
       this.currentMonthStr = getPreviousMonthStr(this.currentMonthStr);
       this.render();
@@ -88,7 +121,6 @@ class CoupleFinanceApp {
       this.render();
     });
 
-    // Quick Add Button handlers
     if (this.btnHeaderAdd) {
       this.btnHeaderAdd.addEventListener('click', () => {
         this.modal.open(null, this.currentMonthStr);
@@ -101,7 +133,6 @@ class CoupleFinanceApp {
       });
     }
 
-    // Sidebar navigation
     this.sidebarNavItems.forEach(item => {
       item.addEventListener('click', () => {
         const tab = item.getAttribute('data-tab');
@@ -109,7 +140,6 @@ class CoupleFinanceApp {
       });
     });
 
-    // Bottom navigation
     this.bottomNavItems.forEach(item => {
       item.addEventListener('click', () => {
         const tab = item.getAttribute('data-tab');
@@ -145,6 +175,8 @@ class CoupleFinanceApp {
     if (this.sidebarUserBadges) {
       this.sidebarUserBadges.innerHTML = `<span>👨 ${hName}</span> · <span>👩 ${wName}</span>`;
     }
+
+    this.updateCloudBadge();
   }
 
   render() {
