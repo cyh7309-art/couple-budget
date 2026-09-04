@@ -1,9 +1,19 @@
 /**
- * LocalStorage & Supabase Hybrid Storage Manager
+ * LocalStorage + Supabase Hybrid Storage Manager
  * Couple Finance Dashboard ("우리집 가계부")
+ *
+ * 설계 원칙
+ *  1) 로컬 저장이 항상 먼저 성공한다 (오프라인에서도 입력 가능).
+ *  2) 클라우드 전송에 실패한 변경은 재시도 큐에 남는다 — 절대 조용히 버리지 않는다.
+ *  3) 클라우드 데이터로 로컬을 "덮어쓰지" 않는다. id + updatedAt 기준으로 병합한다.
+ *  4) 데모 모드(?demo=1)는 클라우드에 아무것도 쓰지 않는다.
  */
 
-import { DEFAULT_USERS, DEFAULT_CATEGORIES, DEFAULT_BUDGETS, DEFAULT_GOALS, DEFAULT_ACCOUNTS, generateInitialTransactions } from './models.js';
+import {
+  DEFAULT_USERS, DEFAULT_CATEGORIES, DEFAULT_BUDGETS, DEFAULT_GOALS, DEFAULT_ACCOUNTS,
+  DEMO_BUDGETS, DEMO_GOALS, DEMO_ACCOUNTS, generateDemoTransactions,
+  isSampleTransactionId, SAMPLE_BUDGET_IDS, SAMPLE_GOAL_IDS
+} from './models.js';
 import { SupabaseSyncEngine } from './supabaseClient.js';
 
 const STORAGE_KEYS = {
@@ -12,263 +22,531 @@ const STORAGE_KEYS = {
   TRANSACTIONS: 'couple_finance_transactions',
   BUDGETS: 'couple_finance_budgets',
   GOALS: 'couple_finance_goals',
-  ACCOUNTS: 'couple_finance_accounts'
+  ACCOUNTS: 'couple_finance_accounts',
+  QUEUE: 'couple_finance_sync_queue',
+  SYNCED_ONCE: 'couple_finance_synced_once',
+  DEMO: 'couple_finance_demo_mode'
 };
 
-export class StorageManager {
-  static init() {
-    if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(generateInitialTransactions()));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.BUDGETS)) {
-      localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(DEFAULT_BUDGETS));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.GOALS)) {
-      localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(DEFAULT_GOALS));
-    }
-    if (!localStorage.getItem(STORAGE_KEYS.ACCOUNTS)) {
-      localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(DEFAULT_ACCOUNTS));
-    }
-
-    // Background Cloud Sync on start
-    this.syncFromCloud();
-  }
-
-  static async syncFromCloud() {
+/* ---------- Demo mode ---------- */
+let _demoMode = null;
+export function isDemoMode() {
+  if (_demoMode === null) {
+    let flag = false;
     try {
-      // 1. Transactions
-      const cloudTx = await SupabaseSyncEngine.fetchTransactions();
-      if (cloudTx && Array.isArray(cloudTx)) {
-        if (cloudTx.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(cloudTx));
-        } else {
-          // If Supabase table is empty, upload local transactions
-          const localTx = this.getTransactions();
-          for (const tx of localTx) {
-            await SupabaseSyncEngine.upsertTransaction(tx);
-          }
-        }
-      }
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('demo') === '1') { localStorage.setItem(STORAGE_KEYS.DEMO, '1'); flag = true; }
+      else if (p.get('demo') === '0') { localStorage.removeItem(STORAGE_KEYS.DEMO); flag = false; }
+      else flag = localStorage.getItem(STORAGE_KEYS.DEMO) === '1';
+    } catch (e) { flag = false; }
+    _demoMode = flag;
+  }
+  return _demoMode;
+}
 
-      // 2. Users
-      const cloudUsers = await SupabaseSyncEngine.fetchUsers();
-      if (cloudUsers) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudUsers));
-      } else {
-        await SupabaseSyncEngine.saveUsers(this.getUsers());
-      }
+function readJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed === null || parsed === undefined ? fallback : parsed;
+  } catch (e) {
+    console.warn('localStorage parse error for', key, e);
+    return fallback;
+  }
+}
 
-      // 3. Budgets
-      const cloudBudgets = await SupabaseSyncEngine.fetchBudgets();
-      if (cloudBudgets && Array.isArray(cloudBudgets) && cloudBudgets.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(cloudBudgets));
-      }
+function writeJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    console.error('localStorage write failed (용량 초과 가능):', key, e);
+    return false;
+  }
+}
 
-      // 4. Goals
-      const cloudGoals = await SupabaseSyncEngine.fetchGoals();
-      if (cloudGoals && Array.isArray(cloudGoals) && cloudGoals.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(cloudGoals));
-      }
+/** 병합 시 어느 쪽이 최신인지 판단 */
+function stampOf(item) {
+  return item.updatedAt || item.createdAt || '';
+}
 
-      return true;
-    } catch (e) {
-      console.warn('Cloud sync from server error:', e.message);
-      return false;
+export class StorageManager {
+
+  /* ===================== 초기화 ===================== */
+
+  static init() {
+    if (localStorage.getItem(STORAGE_KEYS.USERS) === null) {
+      writeJSON(STORAGE_KEYS.USERS, DEFAULT_USERS);
     }
+    if (localStorage.getItem(STORAGE_KEYS.CATEGORIES) === null) {
+      writeJSON(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.TRANSACTIONS) === null) {
+      writeJSON(STORAGE_KEYS.TRANSACTIONS, isDemoMode() ? generateDemoTransactions() : []);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.BUDGETS) === null) {
+      writeJSON(STORAGE_KEYS.BUDGETS, isDemoMode() ? DEMO_BUDGETS : DEFAULT_BUDGETS);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.GOALS) === null) {
+      writeJSON(STORAGE_KEYS.GOALS, isDemoMode() ? DEMO_GOALS : DEFAULT_GOALS);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.ACCOUNTS) === null) {
+      writeJSON(STORAGE_KEYS.ACCOUNTS, isDemoMode() ? DEMO_ACCOUNTS : DEFAULT_ACCOUNTS);
+    }
+    // ⚠️ 여기서 syncFromCloud() 를 호출하지 않습니다.
+    //    app.js 가 한 번만 호출하도록 하여 중복 실행/경쟁을 막습니다.
   }
 
-  // --- Users ---
+  /* ===================== 오프라인 재시도 큐 ===================== */
+
+  static _queue() {
+    const q = readJSON(STORAGE_KEYS.QUEUE, []);
+    return Array.isArray(q) ? q : [];
+  }
+
+  static _setQueue(q) {
+    writeJSON(STORAGE_KEYS.QUEUE, q);
+  }
+
+  /** 같은 레코드에 대한 이전 작업은 최신 작업으로 대체합니다 */
+  static _enqueue(op) {
+    if (isDemoMode()) return;
+    const q = this._queue().filter(o => !(o.table === op.table && o.id === op.id));
+    q.push(op);
+    this._setQueue(q);
+  }
+
+  static getPendingCount() {
+    return this._queue().length;
+  }
+
+  /** 큐를 순서대로 재전송. 전부 성공하면 true */
+  static async flushQueue() {
+    if (isDemoMode()) return true;
+    const q = this._queue();
+    if (q.length === 0) return true;
+
+    const remaining = [];
+    for (const op of q) {
+      let ok = false;
+      try {
+        if (op.table === 'transactions') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteTransaction(op.id)
+            : await SupabaseSyncEngine.upsertTransaction(op.data);
+        } else if (op.table === 'budgets') {
+          ok = await SupabaseSyncEngine.upsertBudget(op.data);
+        } else if (op.table === 'goals') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteGoal(op.id)
+            : await SupabaseSyncEngine.saveGoals([op.data]);
+        } else if (op.table === 'user_settings') {
+          ok = await SupabaseSyncEngine.saveUsers(op.data);
+        } else if (op.table === 'categories') {
+          ok = await SupabaseSyncEngine.saveCategories([op.data]);
+        } else {
+          ok = true; // 알 수 없는 작업은 버립니다
+        }
+      } catch (e) {
+        ok = false;
+      }
+      if (!ok) remaining.push(op);
+    }
+
+    this._setQueue(remaining);
+    return remaining.length === 0;
+  }
+
+  /* ===================== 클라우드 동기화 ===================== */
+
+  /**
+   * 클라우드와 병합 동기화.
+   * @returns {'synced'|'offline'|'demo'|'pending'}
+   */
+  static async syncFromCloud() {
+    if (isDemoMode()) return 'demo';
+
+    // 1) 밀린 로컬 변경분을 먼저 올린다
+    const flushed = await this.flushQueue();
+
+    // 2) 클라우드 상태를 읽는다
+    const cloudTx = await SupabaseSyncEngine.fetchTransactions();
+    if (!Array.isArray(cloudTx)) {
+      // 읽기 실패 = 오프라인/테이블 없음. 로컬을 절대 건드리지 않는다.
+      return 'offline';
+    }
+    if (!flushed) {
+      // 아직 못 올린 로컬 변경이 있다 → 덮어쓰면 유실되므로 병합하지 않는다.
+      return 'pending';
+    }
+
+    const syncedOnce = localStorage.getItem(STORAGE_KEYS.SYNCED_ONCE) === '1';
+
+    // 3) 거래 병합
+    const localTx = this.getTransactions();
+    const map = new Map();
+    cloudTx.forEach(t => map.set(t.id, t));
+
+    localTx.forEach(t => {
+      const cloudVersion = map.get(t.id);
+      if (!cloudVersion) {
+        // 클라우드에 없는 로컬 항목:
+        //  - 최초 동기화 전이면 "아직 안 올라간 내 데이터" → 올린다
+        //  - 이미 동기화한 적이 있으면 "상대가 삭제한 항목" → 제거한다
+        if (!syncedOnce && !isSampleTransactionId(t.id)) map.set(t.id, t);
+      } else if (stampOf(t) > stampOf(cloudVersion)) {
+        map.set(t.id, t); // 로컬이 더 최신
+      }
+    });
+
+    const merged = Array.from(map.values())
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    this.saveTransactions(merged);
+
+    // 최초 동기화에서 새로 살린 로컬 항목은 클라우드로 올린다
+    if (!syncedOnce) {
+      const cloudIds = new Set(cloudTx.map(t => t.id));
+      for (const t of merged) {
+        if (!cloudIds.has(t.id)) await this._pushTransaction(t);
+      }
+    }
+
+    // 4) 사용자 설정
+    const cloudUsers = await SupabaseSyncEngine.fetchUsers();
+    if (cloudUsers) {
+      writeJSON(STORAGE_KEYS.USERS, cloudUsers);
+    } else {
+      const ok = await SupabaseSyncEngine.saveUsers(this.getUsers());
+      if (!ok) this._enqueue({ table: 'user_settings', op: 'upsert', id: 'all', data: this.getUsers() });
+    }
+
+    // 5) 카테고리 (기존에는 아예 동기화되지 않던 부분)
+    const cloudCats = await SupabaseSyncEngine.fetchCategories();
+    if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+      const catMap = new Map();
+      this.getCategories().forEach(c => catMap.set(c.id, c));
+      cloudCats.forEach(c => catMap.set(c.id, c)); // 클라우드 우선
+      writeJSON(STORAGE_KEYS.CATEGORIES, Array.from(catMap.values()));
+    } else {
+      await SupabaseSyncEngine.saveCategories(this.getCategories());
+    }
+
+    // 6) 예산
+    const cloudBudgets = await SupabaseSyncEngine.fetchBudgets();
+    if (Array.isArray(cloudBudgets)) {
+      if (cloudBudgets.length > 0) {
+        writeJSON(STORAGE_KEYS.BUDGETS, cloudBudgets);
+      } else if (!syncedOnce) {
+        const local = this.getBudgets().filter(b => !SAMPLE_BUDGET_IDS.includes(b.id));
+        if (local.length > 0) await SupabaseSyncEngine.upsertBudgets(local);
+      }
+    }
+
+    // 7) 목표
+    const cloudGoals = await SupabaseSyncEngine.fetchGoals();
+    if (Array.isArray(cloudGoals)) {
+      if (cloudGoals.length > 0) {
+        writeJSON(STORAGE_KEYS.GOALS, cloudGoals);
+      } else if (!syncedOnce) {
+        const local = this.getGoals().filter(g => !SAMPLE_GOAL_IDS.includes(g.id));
+        if (local.length > 0) await SupabaseSyncEngine.saveGoals(local);
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEYS.SYNCED_ONCE, '1');
+    return 'synced';
+  }
+
+  /* ===================== Users ===================== */
+
   static getUsers() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS)) || DEFAULT_USERS;
+    const u = readJSON(STORAGE_KEYS.USERS, DEFAULT_USERS);
+    // 클라우드 row 에 name 이 없을 수도 있으므로 기본값으로 보정
+    return {
+      husband: { ...DEFAULT_USERS.husband, ...(u.husband || {}) },
+      wife: { ...DEFAULT_USERS.wife, ...(u.wife || {}) }
+    };
   }
 
   static async saveUsers(users) {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    await SupabaseSyncEngine.saveUsers(users);
+    writeJSON(STORAGE_KEYS.USERS, users);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.saveUsers(users);
+    if (!ok) this._enqueue({ table: 'user_settings', op: 'upsert', id: 'all', data: users });
+    return ok;
   }
 
-  // --- Categories ---
+  /* ===================== Categories ===================== */
+
   static getCategories() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.CATEGORIES)) || DEFAULT_CATEGORIES;
+    const c = readJSON(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+    return Array.isArray(c) ? c : DEFAULT_CATEGORIES;
   }
 
   static async saveCategories(categories) {
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-    await SupabaseSyncEngine.saveCategories(categories);
+    writeJSON(STORAGE_KEYS.CATEGORIES, categories);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.saveCategories(categories);
+    if (!ok) {
+      categories.forEach(c => this._enqueue({ table: 'categories', op: 'upsert', id: c.id, data: c }));
+    }
+    return ok;
   }
 
-  // --- Transactions ---
+  /* ===================== Transactions ===================== */
+
   static getTransactions() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) || [];
+    const t = readJSON(STORAGE_KEYS.TRANSACTIONS, []);
+    return Array.isArray(t) ? t : [];
   }
 
   static saveTransactions(transactions) {
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    writeJSON(STORAGE_KEYS.TRANSACTIONS, transactions);
+  }
+
+  static async _pushTransaction(tx) {
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.upsertTransaction(tx);
+    if (!ok) this._enqueue({ table: 'transactions', op: 'upsert', id: tx.id, data: tx });
+    return ok;
   }
 
   static async addTransaction(txData) {
     const transactions = this.getTransactions();
+    const now = new Date().toISOString();
     const newTx = {
-      id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...txData
+      ...txData,
+      id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      createdAt: now,
+      updatedAt: now
     };
     transactions.unshift(newTx);
     this.saveTransactions(transactions);
-
-    // Immediate sync to Supabase Cloud DB
-    await SupabaseSyncEngine.upsertTransaction(newTx);
+    await this._pushTransaction(newTx);
     return newTx;
   }
 
   static async updateTransaction(id, txData) {
     const transactions = this.getTransactions();
     const index = transactions.findIndex(t => t.id === id);
-    if (index !== -1) {
-      transactions[index] = {
-        ...transactions[index],
-        ...txData,
-        updatedAt: new Date().toISOString()
-      };
-      this.saveTransactions(transactions);
+    if (index === -1) return null;
 
-      // Immediate sync to Supabase Cloud DB
-      await SupabaseSyncEngine.upsertTransaction(transactions[index]);
-      return transactions[index];
-    }
-    return null;
+    transactions[index] = {
+      ...transactions[index],
+      ...txData,
+      updatedAt: new Date().toISOString()
+    };
+    this.saveTransactions(transactions);
+    await this._pushTransaction(transactions[index]);
+    return transactions[index];
   }
 
   static async deleteTransaction(id) {
-    let transactions = this.getTransactions();
-    transactions = transactions.filter(t => t.id !== id);
+    const transactions = this.getTransactions().filter(t => t.id !== id);
     this.saveTransactions(transactions);
-
-    // Immediate sync to Supabase Cloud DB
-    await SupabaseSyncEngine.deleteTransaction(id);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.deleteTransaction(id);
+    if (!ok) this._enqueue({ table: 'transactions', op: 'delete', id });
+    return ok;
   }
 
-  // --- Budgets ---
+  /* ===================== Budgets ===================== */
+
   static getBudgets() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.BUDGETS)) || DEFAULT_BUDGETS;
+    const b = readJSON(STORAGE_KEYS.BUDGETS, DEFAULT_BUDGETS);
+    return Array.isArray(b) ? b : [];
   }
 
   static saveBudgets(budgets) {
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
+    writeJSON(STORAGE_KEYS.BUDGETS, budgets);
   }
 
   static async setCategoryBudget(month, categoryId, amount) {
     const budgets = this.getBudgets();
-    const existingIndex = budgets.findIndex(b => b.month === month && b.categoryId === categoryId);
+    const idx = budgets.findIndex(b => b.month === month && b.categoryId === categoryId);
     let budgetObj;
-    if (existingIndex !== -1) {
-      budgets[existingIndex].amount = Number(amount);
-      budgetObj = budgets[existingIndex];
+
+    if (idx !== -1) {
+      budgets[idx].amount = Number(amount) || 0;
+      budgetObj = budgets[idx];
     } else {
-      budgetObj = {
-        id: 'b_' + month + '_' + categoryId,
-        month,
-        categoryId,
-        amount: Number(amount)
-      };
+      budgetObj = { id: 'b_' + month + '_' + categoryId, month, categoryId, amount: Number(amount) || 0 };
       budgets.push(budgetObj);
     }
-    this.saveBudgets(budgets);
 
-    // Sync to Supabase
-    await SupabaseSyncEngine.upsertBudget(budgetObj);
+    this.saveBudgets(budgets);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.upsertBudget(budgetObj);
+    if (!ok) this._enqueue({ table: 'budgets', op: 'upsert', id: budgetObj.id, data: budgetObj });
+    return ok;
   }
 
-  // --- Goals ---
+  /** 여러 카테고리 예산을 한 번에 저장 (설정 화면의 "일괄 저장") */
+  static async setCategoryBudgets(month, entries) {
+    const budgets = this.getBudgets();
+    const changed = [];
+
+    entries.forEach(({ categoryId, amount }) => {
+      const amt = Number(amount) || 0;
+      const idx = budgets.findIndex(b => b.month === month && b.categoryId === categoryId);
+      if (idx !== -1) {
+        budgets[idx].amount = amt;
+        changed.push(budgets[idx]);
+      } else {
+        const obj = { id: 'b_' + month + '_' + categoryId, month, categoryId, amount: amt };
+        budgets.push(obj);
+        changed.push(obj);
+      }
+    });
+
+    this.saveBudgets(budgets);
+    if (isDemoMode()) return true;
+
+    const ok = await SupabaseSyncEngine.upsertBudgets(changed);
+    if (!ok) changed.forEach(b => this._enqueue({ table: 'budgets', op: 'upsert', id: b.id, data: b }));
+    return ok;
+  }
+
+  /* ===================== Goals ===================== */
+
   static getGoals() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.GOALS)) || DEFAULT_GOALS;
+    const g = readJSON(STORAGE_KEYS.GOALS, DEFAULT_GOALS);
+    return Array.isArray(g) ? g : [];
   }
 
   static async saveGoals(goals) {
-    localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(goals));
-    await SupabaseSyncEngine.saveGoals(goals);
+    writeJSON(STORAGE_KEYS.GOALS, goals);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.saveGoals(goals);
+    if (!ok) goals.forEach(g => this._enqueue({ table: 'goals', op: 'upsert', id: g.id, data: g }));
+    return ok;
   }
 
-  // --- Accounts ---
+  static async deleteGoal(id) {
+    const goals = this.getGoals().filter(g => g.id !== id);
+    writeJSON(STORAGE_KEYS.GOALS, goals);
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.deleteGoal(id);
+    if (!ok) this._enqueue({ table: 'goals', op: 'delete', id });
+    return ok;
+  }
+
+  /* ===================== Accounts (로컬 전용) ===================== */
+
   static getAccounts() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.ACCOUNTS)) || DEFAULT_ACCOUNTS;
+    const a = readJSON(STORAGE_KEYS.ACCOUNTS, DEFAULT_ACCOUNTS);
+    return Array.isArray(a) ? a : [];
   }
 
   static saveAccounts(accounts) {
-    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+    writeJSON(STORAGE_KEYS.ACCOUNTS, accounts);
   }
 
-  // --- Reset & Backup / Restore ---
-  static async resetToSampleData() {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(generateInitialTransactions()));
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(DEFAULT_BUDGETS));
-    localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(DEFAULT_GOALS));
-    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(DEFAULT_ACCOUNTS));
+  /* ===================== 정리 / 초기화 / 백업 ===================== */
 
-    const transactions = generateInitialTransactions();
-    for (const t of transactions) {
-      await SupabaseSyncEngine.upsertTransaction(t);
+  /** 과거 버전이 심어둔 샘플 데이터를 로컬 + 클라우드에서 제거 */
+  static async purgeSampleData() {
+    const all = this.getTransactions();
+    const sampleIds = all.filter(t => isSampleTransactionId(t.id)).map(t => t.id);
+    this.saveTransactions(all.filter(t => !isSampleTransactionId(t.id)));
+
+    const budgets = this.getBudgets().filter(b => !SAMPLE_BUDGET_IDS.includes(b.id));
+    this.saveBudgets(budgets);
+    const goals = this.getGoals().filter(g => !SAMPLE_GOAL_IDS.includes(g.id));
+    writeJSON(STORAGE_KEYS.GOALS, goals);
+    writeJSON(STORAGE_KEYS.ACCOUNTS, this.getAccounts().filter(a => !DEMO_ACCOUNTS.some(d => d.id === a.id)));
+
+    if (!isDemoMode() && sampleIds.length > 0) {
+      await SupabaseSyncEngine.deleteTransactionsByIds(sampleIds);
     }
-    await SupabaseSyncEngine.saveUsers(DEFAULT_USERS);
-    await SupabaseSyncEngine.saveCategories(DEFAULT_CATEGORIES);
-    await SupabaseSyncEngine.saveGoals(DEFAULT_GOALS);
+    return sampleIds.length;
   }
 
-  static clearAllData() {
-    localStorage.removeItem(STORAGE_KEYS.USERS);
-    localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.BUDGETS);
-    localStorage.removeItem(STORAGE_KEYS.GOALS);
-    localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
+  /** 로컬 + 클라우드를 모두 비우고 빈 가계부로 시작 */
+  static async clearAllData() {
+    if (!isDemoMode()) {
+      await SupabaseSyncEngine.deleteAllTransactions();
+      await SupabaseSyncEngine.deleteAllBudgets();
+      await SupabaseSyncEngine.deleteAllGoals();
+    }
+    Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+    _demoMode = null;
     this.init();
   }
 
+  /** 데모 데이터를 로컬에만 다시 로드 (클라우드에는 올리지 않습니다) */
+  static loadDemoDataLocally() {
+    localStorage.setItem(STORAGE_KEYS.DEMO, '1');
+    _demoMode = true;
+    writeJSON(STORAGE_KEYS.USERS, DEFAULT_USERS);
+    writeJSON(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+    writeJSON(STORAGE_KEYS.TRANSACTIONS, generateDemoTransactions());
+    writeJSON(STORAGE_KEYS.BUDGETS, DEMO_BUDGETS);
+    writeJSON(STORAGE_KEYS.GOALS, DEMO_GOALS);
+    writeJSON(STORAGE_KEYS.ACCOUNTS, DEMO_ACCOUNTS);
+    this._setQueue([]);
+  }
+
+  static exitDemoMode() {
+    localStorage.removeItem(STORAGE_KEYS.DEMO);
+    _demoMode = false;
+    writeJSON(STORAGE_KEYS.TRANSACTIONS, []);
+    writeJSON(STORAGE_KEYS.BUDGETS, []);
+    writeJSON(STORAGE_KEYS.GOALS, []);
+    writeJSON(STORAGE_KEYS.ACCOUNTS, []);
+    localStorage.removeItem(STORAGE_KEYS.SYNCED_ONCE);
+  }
+
   static exportBackupData() {
-    const backupObj = {
+    return JSON.stringify({
       users: this.getUsers(),
       categories: this.getCategories(),
       transactions: this.getTransactions(),
       budgets: this.getBudgets(),
       goals: this.getGoals(),
       accounts: this.getAccounts(),
-      exportedAt: new Date().toISOString()
-    };
-    return JSON.stringify(backupObj, null, 2);
+      exportedAt: new Date().toISOString(),
+      version: 2
+    }, null, 2);
   }
 
   static async importBackupData(jsonString) {
+    let data;
     try {
-      const data = JSON.parse(jsonString);
+      data = JSON.parse(jsonString);
+    } catch (e) {
+      return { ok: false, reason: 'JSON 형식이 아닙니다.' };
+    }
+    if (!data || typeof data !== 'object') {
+      return { ok: false, reason: '백업 파일 구조가 올바르지 않습니다.' };
+    }
+    if (!Array.isArray(data.transactions)) {
+      return { ok: false, reason: 'transactions 항목이 없습니다. 이 앱의 백업 파일이 맞는지 확인해주세요.' };
+    }
+
+    try {
       if (data.users) await this.saveUsers(data.users);
-      if (data.categories) await this.saveCategories(data.categories);
-      if (data.transactions) {
-        this.saveTransactions(data.transactions);
-        for (const t of data.transactions) {
-          await SupabaseSyncEngine.upsertTransaction(t);
-        }
-      }
-      if (data.budgets) {
+      if (Array.isArray(data.categories) && data.categories.length) await this.saveCategories(data.categories);
+
+      const stamped = data.transactions.map(t => ({
+        ...t,
+        updatedAt: t.updatedAt || t.createdAt || new Date().toISOString()
+      }));
+      this.saveTransactions(stamped);
+      for (const t of stamped) await this._pushTransaction(t);
+
+      if (Array.isArray(data.budgets)) {
         this.saveBudgets(data.budgets);
-        for (const b of data.budgets) {
-          await SupabaseSyncEngine.upsertBudget(b);
-        }
+        if (!isDemoMode() && data.budgets.length) await SupabaseSyncEngine.upsertBudgets(data.budgets);
       }
-      if (data.goals) await this.saveGoals(data.goals);
-      if (data.accounts) this.saveAccounts(data.accounts);
-      return true;
+      if (Array.isArray(data.goals) && data.goals.length) await this.saveGoals(data.goals);
+      if (Array.isArray(data.accounts)) this.saveAccounts(data.accounts);
+
+      return { ok: true, count: stamped.length };
     } catch (e) {
       console.error('Failed to import backup data:', e);
-      return false;
+      return { ok: false, reason: e.message || '알 수 없는 오류' };
     }
   }
 }

@@ -4,49 +4,52 @@
 
 import { formatCurrency } from '../calculations.js';
 import { StorageManager } from '../storage.js';
+import { esc } from '../utils.js';
+
+/**
+ * ✅ 필터 상태를 모듈 스코프에 보관합니다.
+ *    (기존에는 재렌더 때마다 검색어/필터가 초기화되어, 삭제 한 건만 해도
+ *     보고 있던 조건이 통째로 날아갔습니다)
+ */
+const filterState = {
+  type: 'all',
+  shared: 'all',
+  user: 'all',
+  category: 'all',
+  search: ''
+};
+
+export function resetTransactionFilters() {
+  filterState.type = 'all';
+  filterState.shared = 'all';
+  filterState.user = 'all';
+  filterState.category = 'all';
+  filterState.search = '';
+}
 
 export function renderTransactionsView(containerEl, currentMonthStr, openEditModal, refreshApp) {
   const transactions = StorageManager.getTransactions();
   const categories = StorageManager.getCategories();
   const users = StorageManager.getUsers();
 
-  const husbandName = users.husband ? users.husband.name : '남편';
-  const wifeName = users.wife ? users.wife.name : '아내';
+  const husbandName = users.husband.name;
+  const wifeName = users.wife.name;
 
-  // State variables for filter
-  let filterType = 'all';
-  let filterShared = 'all';
-  let filterUser = 'all';
-  let filterCategory = 'all';
-  let searchQuery = '';
+  // 삭제된 카테고리가 필터에 남아 있으면 초기화
+  if (filterState.category !== 'all' && !categories.some(c => c.id === filterState.category)) {
+    filterState.category = 'all';
+  }
 
   function renderList() {
-    // 1. Filter by current month
     let filtered = transactions.filter(t => t.date && t.date.startsWith(currentMonthStr));
 
-    // 2. Filter by Type
-    if (filterType !== 'all') {
-      filtered = filtered.filter(t => t.type === filterType);
-    }
+    if (filterState.type !== 'all') filtered = filtered.filter(t => t.type === filterState.type);
+    if (filterState.shared !== 'all') filtered = filtered.filter(t => t.sharedType === filterState.shared);
+    if (filterState.user !== 'all') filtered = filtered.filter(t => t.userId === filterState.user);
+    if (filterState.category !== 'all') filtered = filtered.filter(t => t.categoryId === filterState.category);
 
-    // 3. Filter by Shared
-    if (filterShared !== 'all') {
-      filtered = filtered.filter(t => t.sharedType === filterShared);
-    }
-
-    // 4. Filter by User
-    if (filterUser !== 'all') {
-      filtered = filtered.filter(t => t.userId === filterUser);
-    }
-
-    // 5. Filter by Category
-    if (filterCategory !== 'all') {
-      filtered = filtered.filter(t => t.categoryId === filterCategory);
-    }
-
-    // 6. Search Query
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
+    if (filterState.search.trim() !== '') {
+      const q = filterState.search.toLowerCase();
       filtered = filtered.filter(t => {
         const memoMatch = t.memo && t.memo.toLowerCase().includes(q);
         const cat = categories.find(c => c.id === t.categoryId);
@@ -55,17 +58,14 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
       });
     }
 
-    // Sort by date descending
-    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    filtered.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
-    // Group by Date
     const groups = {};
     filtered.forEach(t => {
       if (!groups[t.date]) groups[t.date] = [];
       groups[t.date].push(t);
     });
-
-    const dateKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
+    const dateKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
     const listContainer = containerEl.querySelector('#tx-list-container');
     const countBadge = containerEl.querySelector('#tx-count-badge');
@@ -94,7 +94,7 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
       return `
         <div class="tx-date-group">
           <div class="tx-date-header">
-            <span class="date-title">📅 ${dateStr}</span>
+            <span class="date-title">📅 ${esc(dateStr)}</span>
             <div class="date-totals">
               ${dayIncomeTotal > 0 ? `<span class="inc-sum">+${formatCurrency(dayIncomeTotal)}</span>` : ''}
               ${dayExpenseTotal > 0 ? `<span class="exp-sum">-${formatCurrency(dayExpenseTotal)}</span>` : ''}
@@ -105,27 +105,30 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
               const catObj = categories.find(c => c.id === t.categoryId);
               const isIncome = t.type === 'income';
               const isTransfer = t.type === 'transfer';
-              const userTag = t.userId === 'husband' ? `👨 ${husbandName}` : `👩 ${wifeName}`;
-              
+              const userTag = t.userId === 'husband' ? `👨 ${esc(husbandName)}` : `👩 ${esc(wifeName)}`;
+
               let sharedBadgeText = '👫 공동';
               let sharedBadgeClass = 'badge-shared';
               if (t.sharedType === 'husband') {
-                sharedBadgeText = `👨 ${husbandName} 개인`;
+                sharedBadgeText = `👨 ${esc(husbandName)} 개인`;
                 sharedBadgeClass = 'badge-husband';
               } else if (t.sharedType === 'wife') {
-                sharedBadgeText = `👩 ${wifeName} 개인`;
+                sharedBadgeText = `👩 ${esc(wifeName)} 개인`;
                 sharedBadgeClass = 'badge-wife';
               }
 
+              const catColor = catObj ? esc(catObj.color) : '#334155';
+              const catBg = catObj ? esc(catObj.color) + '20' : '#e2e8f0';
+
               return `
-                <div class="card tx-item-card" data-id="${t.id}">
+                <div class="card tx-item-card" data-id="${esc(t.id)}">
                   <div class="tx-main">
-                    <div class="tx-cat-icon" style="background: ${catObj ? catObj.color + '20' : '#e2e8f0'}; color: ${catObj ? catObj.color : '#334155'}">
-                      ${isTransfer ? '🔄' : (catObj ? catObj.icon : '📦')}
+                    <div class="tx-cat-icon" style="background: ${catBg}; color: ${catColor}">
+                      ${isTransfer ? '🔄' : (catObj ? esc(catObj.icon) : '📦')}
                     </div>
                     <div class="tx-info-content">
                       <div class="tx-title-row">
-                        <span class="tx-name">${t.memo || (catObj ? catObj.name : '거래')}</span>
+                        <span class="tx-name">${esc(t.memo) || (catObj ? esc(catObj.name) : '거래')}</span>
                         <div class="tx-badges">
                           <span class="badge ${sharedBadgeClass}">${sharedBadgeText}</span>
                           ${t.type === 'expense' ? `
@@ -138,7 +141,7 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
                       <div class="tx-sub-row">
                         <span>${userTag}</span>
                         <span>·</span>
-                        <span>${catObj ? catObj.name : (isTransfer ? '계좌이체' : '기타')}</span>
+                        <span>${catObj ? esc(catObj.name) : (isTransfer ? '계좌이체' : '미분류')}</span>
                         ${t.paymentMethod ? `<span>·</span><span>💳 ${t.paymentMethod === 'card' ? '카드' : (t.paymentMethod === 'bank' ? '계좌' : '현금')}</span>` : ''}
                       </div>
                     </div>
@@ -147,8 +150,8 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
                         ${isIncome ? '+' : (isTransfer ? '' : '-')}${formatCurrency(t.amount)}
                       </div>
                       <div class="tx-actions">
-                        <button class="btn-icon btn-edit-tx" data-id="${t.id}" title="수정">✏️</button>
-                        <button class="btn-icon btn-del-tx" data-id="${t.id}" title="삭제">🗑️</button>
+                        <button class="btn-icon btn-edit-tx" data-id="${esc(t.id)}" title="수정">✏️</button>
+                        <button class="btn-icon btn-del-tx" data-id="${esc(t.id)}" title="삭제">🗑️</button>
                       </div>
                     </div>
                   </div>
@@ -160,116 +163,102 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
       `;
     }).join('');
 
-    // Attach Event Listeners for Edit & Delete buttons
     listContainer.querySelectorAll('.btn-edit-tx').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const id = btn.getAttribute('data-id');
-        openEditModal(id);
+        openEditModal(btn.getAttribute('data-id'));
       });
     });
 
     listContainer.querySelectorAll('.btn-del-tx').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const id = btn.getAttribute('data-id');
-        if (confirm('이 거래 항목을 정말로 삭제하시겠습니까?')) {
-          await StorageManager.deleteTransaction(id);
-          refreshApp();
-        }
+        if (!confirm('이 거래 항목을 정말로 삭제하시겠습니까?')) return;
+        btn.disabled = true;
+        await StorageManager.deleteTransaction(btn.getAttribute('data-id'));
+        refreshApp();
       });
     });
   }
 
-  // Render Shell Controls
+  const selected = (val, current) => (val === current ? 'selected' : '');
+
   containerEl.innerHTML = `
     <div class="card filter-bar-card">
       <div class="filter-header">
         <h3 class="filter-title">🔎 거래 내역 검색 & 필터</h3>
-        <span class="badge badge-normal" id="tx-count-badge">0건</span>
+        <div class="filter-header-right">
+          <span class="badge badge-normal" id="tx-count-badge">0건</span>
+          <button class="btn-text" id="btn-reset-filters">필터 초기화</button>
+        </div>
       </div>
 
       <div class="filter-inputs-grid">
-        <!-- Search Input -->
         <div class="filter-group filter-search">
-          <input type="text" id="input-search" class="form-input" placeholder="메모 또는 카테고리 검색..." />
+          <input type="text" id="input-search" class="form-input" placeholder="메모 또는 카테고리 검색..." value="${esc(filterState.search)}" />
         </div>
 
-        <!-- Type Filter -->
         <div class="filter-group">
           <select id="select-type" class="form-select">
-            <option value="all">모든 거래 유형</option>
-            <option value="expense">💸 지출</option>
-            <option value="income">💰 수입</option>
-            <option value="transfer">🔄 이체</option>
+            <option value="all" ${selected('all', filterState.type)}>모든 거래 유형</option>
+            <option value="expense" ${selected('expense', filterState.type)}>💸 지출</option>
+            <option value="income" ${selected('income', filterState.type)}>💰 수입</option>
+            <option value="transfer" ${selected('transfer', filterState.type)}>🔄 이체</option>
           </select>
         </div>
 
-        <!-- Shared Filter -->
         <div class="filter-group">
           <select id="select-shared" class="form-select">
-            <option value="all">모든 구분 (공동/개인)</option>
-            <option value="shared">👫 공동생활비</option>
-            <option value="husband">👨 ${husbandName} 개인</option>
-            <option value="wife">👩 ${wifeName} 개인</option>
+            <option value="all" ${selected('all', filterState.shared)}>모든 구분 (공동/개인)</option>
+            <option value="shared" ${selected('shared', filterState.shared)}>👫 공동생활비</option>
+            <option value="husband" ${selected('husband', filterState.shared)}>👨 ${esc(husbandName)} 개인</option>
+            <option value="wife" ${selected('wife', filterState.shared)}>👩 ${esc(wifeName)} 개인</option>
           </select>
         </div>
 
-        <!-- User Filter -->
         <div class="filter-group">
           <select id="select-user" class="form-select">
-            <option value="all">모든 작성자</option>
-            <option value="husband">👨 ${husbandName}</option>
-            <option value="wife">👩 ${wifeName}</option>
+            <option value="all" ${selected('all', filterState.user)}>모든 작성자</option>
+            <option value="husband" ${selected('husband', filterState.user)}>👨 ${esc(husbandName)}</option>
+            <option value="wife" ${selected('wife', filterState.user)}>👩 ${esc(wifeName)}</option>
           </select>
         </div>
 
-        <!-- Category Filter -->
         <div class="filter-group">
           <select id="select-category" class="form-select">
-            <option value="all">모든 카테고리</option>
-            ${categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('')}
+            <option value="all" ${selected('all', filterState.category)}>모든 카테고리</option>
+            ${categories.map(c => `<option value="${esc(c.id)}" ${selected(c.id, filterState.category)}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}
           </select>
         </div>
       </div>
     </div>
 
-    <!-- Transactions List Container -->
     <div id="tx-list-container"></div>
   `;
 
-  // Bind filter input events
   const inputSearch = containerEl.querySelector('#input-search');
-  const selectType = containerEl.querySelector('#select-type');
-  const selectShared = containerEl.querySelector('#select-shared');
-  const selectUser = containerEl.querySelector('#select-user');
-  const selectCategory = containerEl.querySelector('#select-category');
-
   inputSearch.addEventListener('input', (e) => {
-    searchQuery = e.target.value;
+    filterState.search = e.target.value;
     renderList();
   });
 
-  selectType.addEventListener('change', (e) => {
-    filterType = e.target.value;
-    renderList();
+  containerEl.querySelector('#select-type').addEventListener('change', (e) => {
+    filterState.type = e.target.value; renderList();
+  });
+  containerEl.querySelector('#select-shared').addEventListener('change', (e) => {
+    filterState.shared = e.target.value; renderList();
+  });
+  containerEl.querySelector('#select-user').addEventListener('change', (e) => {
+    filterState.user = e.target.value; renderList();
+  });
+  containerEl.querySelector('#select-category').addEventListener('change', (e) => {
+    filterState.category = e.target.value; renderList();
   });
 
-  selectShared.addEventListener('change', (e) => {
-    filterShared = e.target.value;
-    renderList();
+  containerEl.querySelector('#btn-reset-filters').addEventListener('click', () => {
+    resetTransactionFilters();
+    refreshApp();
   });
 
-  selectUser.addEventListener('change', (e) => {
-    filterUser = e.target.value;
-    renderList();
-  });
-
-  selectCategory.addEventListener('change', (e) => {
-    filterCategory = e.target.value;
-    renderList();
-  });
-
-  // Initial render of list
   renderList();
 }

@@ -29,7 +29,7 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.12);
   
-  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family: 'Plus Jakarta Sans', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
   --transition: all 0.2s ease-in-out;
 }
 
@@ -1261,4 +1261,165 @@ body {
   .setting-form-row { grid-template-columns: 1fr; }
   .budget-settings-grid { grid-template-columns: 1fr; }
   .btn-header-add { display: none; }
+}
+
+/* ==========================================================================
+   추가 스타일 — 로그인 게이트 / 동기화 상태 / 입력 보조
+   ========================================================================== */
+
+/* 금액 입력 천단위 미리보기 */
+.amount-hint {
+  min-height: 1.25rem;
+  margin-top: 0.35rem;
+  text-align: right;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* 저장 대기(오프라인 큐) 뱃지 */
+.cloud-badge.badge-warning-sync {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+/* 거래 목록 필터 헤더 우측 그룹 */
+.filter-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* 목표 카드 헤더 안의 삭제 버튼 */
+.goal-header {
+  position: relative;
+}
+.goal-header .btn-del-goal {
+  margin-left: auto;
+  opacity: 0.5;
+  transition: var(--transition);
+}
+.goal-header .btn-del-goal:hover {
+  opacity: 1;
+}
+
+/* 카테고리 관리 카드: 삭제 버튼 정렬 */
+.cat-manage-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* 비활성 버튼 */
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --------------------------- 로그인 게이트 --------------------------- */
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: linear-gradient(160deg, #1e1b4b 0%, #312e81 55%, #4338ca 100%);
+  overflow-y: auto;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 2rem 1.75rem;
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.auth-logo {
+  font-size: 2.5rem;
+  display: block;
+  line-height: 1;
+}
+
+.auth-title {
+  margin-top: 0.6rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.auth-desc {
+  margin-top: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.auth-form .form-label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.auth-form .form-input {
+  width: 100%;
+}
+
+.auth-error {
+  min-height: 1.25rem;
+  margin: 0.65rem 0 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-expense);
+  line-height: 1.4;
+}
+
+.auth-btn-main {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.auth-btn-sub {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.auth-btn-skip {
+  display: block;
+  width: 100%;
+  margin-top: 1.1rem;
+  padding: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.auth-note {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-light);
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 모바일 뷰포트 대응 (주소창 때문에 100vh 가 잘리는 문제) */
+@supports (height: 100dvh) {
+  body { min-height: 100dvh; }
+  .auth-gate { min-height: 100dvh; }
+}
+
+/* iOS 홈 인디케이터 영역 확보 */
+.bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }

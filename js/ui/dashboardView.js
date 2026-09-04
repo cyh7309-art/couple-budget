@@ -14,6 +14,7 @@ import {
   calculateUserBreakdown 
 } from '../calculations.js';
 import { StorageManager } from '../storage.js';
+import { esc } from '../utils.js';
 
 export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab) {
   const transactions = StorageManager.getTransactions();
@@ -33,11 +34,11 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
 
   const monthTxList = transactions
     .filter(t => t.date && t.date.startsWith(currentMonthStr))
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
     .slice(0, 5);
 
-  const husbandName = users.husband ? users.husband.name : '남편';
-  const wifeName = users.wife ? users.wife.name : '아내';
+  const husbandName = esc(users.husband.name);
+  const wifeName = esc(users.wife.name);
 
   containerEl.innerHTML = `
     <!-- Top Summary Cards -->
@@ -110,8 +111,8 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
                 <div class="progress-item">
                   <div class="progress-info">
                     <div class="cat-label">
-                      <span class="cat-icon-badge">${cat.icon}</span>
-                      <span class="cat-name">${cat.name}</span>
+                      <span class="cat-icon-badge">${esc(cat.icon)}</span>
+                      <span class="cat-name">${esc(cat.name)}</span>
                     </div>
                     <div class="cat-amount">
                       <strong>${formatCurrency(cat.amount)}</strong>
@@ -119,7 +120,7 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
                     </div>
                   </div>
                   <div class="progress-track">
-                    <div class="progress-fill" style="width: ${cat.percentage}%; background-color: ${cat.color}"></div>
+                    <div class="progress-fill" style="width: ${cat.percentage}%; background-color: ${esc(cat.color)}"></div>
                   </div>
                 </div>
               `).join('')}
@@ -182,7 +183,7 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
                 <div class="budget-item">
                   <div class="budget-header">
                     <div class="budget-title">
-                      <span>${b.icon} ${b.categoryName}</span>
+                      <span>${esc(b.icon)} ${esc(b.categoryName)}</span>
                       <span class="badge ${b.statusBadgeClass}">${b.statusIcon} ${b.statusLabel}</span>
                     </div>
                     <div class="budget-vals">
@@ -190,7 +191,7 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
                     </div>
                   </div>
                   <div class="progress-track">
-                    <div class="progress-fill ${b.status}" style="width: ${b.progressPct}%; background-color: ${b.color}"></div>
+                    <div class="progress-fill ${b.status}" style="width: ${b.progressPct}%; background-color: ${esc(b.color)}"></div>
                   </div>
                   <div class="budget-sub-info">
                     <span>잔여: ${formatCurrency(b.remainingAmount)}</span>
@@ -226,13 +227,13 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab)
                 return `
                   <div class="tx-row-item">
                     <div class="tx-left">
-                      <div class="tx-cat-badge" style="background: ${catObj ? catObj.color + '20' : '#e2e8f0'}">
-                        ${isTransfer ? '🔄' : (catObj ? catObj.icon : '📦')}
+                      <div class="tx-cat-badge" style="background: ${catObj ? esc(catObj.color) + '20' : '#e2e8f0'}">
+                        ${isTransfer ? '🔄' : (catObj ? esc(catObj.icon) : '📦')}
                       </div>
                       <div class="tx-details">
-                        <div class="tx-memo">${t.memo || (catObj ? catObj.name : '거래')}</div>
+                        <div class="tx-memo">${esc(t.memo) || (catObj ? esc(catObj.name) : '거래')}</div>
                         <div class="tx-meta">
-                          <span class="tx-date">${t.date}</span>
+                          <span class="tx-date">${esc(t.date)}</span>
                           <span class="tx-user">${userTag} · ${sharedTag}</span>
                         </div>
                       </div>

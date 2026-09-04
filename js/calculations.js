@@ -217,11 +217,39 @@ export function calculateFixedVsVariable(transactions, monthStr) {
 }
 
 /**
+ * 해당 월의 예산을 반환합니다.
+ * 그 달에 설정된 예산이 하나도 없으면, 가장 최근 이전 달의 예산을 그대로 이월해서 보여줍니다.
+ * (기존에는 month 가 고정 문자열이라 달이 바뀌면 예산이 통째로 사라졌습니다)
+ */
+export function getBudgetsForMonth(budgets, monthStr) {
+  const list = Array.isArray(budgets) ? budgets : [];
+
+  const exact = list.filter(b => b.month === monthStr);
+  if (exact.length > 0) return exact;
+
+  // month 가 비어 있는 항목은 "모든 달 공통 예산"으로 취급
+  const evergreen = list.filter(b => !b.month);
+  if (evergreen.length > 0) return evergreen.map(b => ({ ...b, month: monthStr, inherited: true }));
+
+  const earlierMonths = Array.from(
+    new Set(list.map(b => b.month).filter(m => m && m < monthStr))
+  ).sort();
+
+  const prevMonth = earlierMonths[earlierMonths.length - 1];
+  if (!prevMonth) return [];
+
+  return list
+    .filter(b => b.month === prevMonth)
+    .map(b => ({ ...b, month: monthStr, inherited: true, inheritedFrom: prevMonth }));
+}
+
+/**
  * Budget vs Actual Expense Tracker per Category
  */
+
 export function calculateBudgetProgress(transactions, budgets, categories, monthStr) {
   const categoryExpenses = calculateCategoryBreakdown(transactions, categories, monthStr).categories;
-  const monthBudgets = budgets.filter(b => b.month === monthStr || !b.month);
+  const monthBudgets = getBudgetsForMonth(budgets, monthStr);
 
   const budgetList = categories.filter(c => c.type === 'expense').map(cat => {
     const budgetObj = monthBudgets.find(b => b.categoryId === cat.id);

@@ -1,6 +1,10 @@
 /**
- * Default Categories, User Settings, Initial Data Models & Mock Datasets
+ * Default Categories, User Settings & Demo Datasets
  * Couple Finance Dashboard ("우리집 가계부")
+ *
+ * ⚠️ 중요: 예산/목표/계좌/거래의 "샘플 데이터"는 더 이상 기본값이 아닙니다.
+ *    데모 데이터는 URL 에 ?demo=1 을 붙였을 때만 로드되며, 이 모드에서는
+ *    클라우드(Supabase)에 절대 업로드되지 않습니다.
  */
 
 export const DEFAULT_USERS = {
@@ -28,7 +32,16 @@ export const DEFAULT_CATEGORIES = [
   { id: 'cat_exp_other', type: 'expense', name: '기타지출', icon: '📦', color: '#64748b' }
 ];
 
-export const DEFAULT_BUDGETS = [
+/* --- 실사용 기본값: 전부 비어 있음 (가짜 숫자를 보여주지 않습니다) --- */
+export const DEFAULT_BUDGETS = [];
+export const DEFAULT_GOALS = [];
+export const DEFAULT_ACCOUNTS = [];
+
+/* ==========================================================================
+   아래는 ?demo=1 전용 데모 데이터입니다. 클라우드에 절대 업로드되지 않습니다.
+   ========================================================================== */
+
+export const DEMO_BUDGETS = [
   { id: 'b_food', month: '2026-09', categoryId: 'cat_exp_food', amount: 700000 },
   { id: 'b_living', month: '2026-09', categoryId: 'cat_exp_living', amount: 850000 },
   { id: 'b_transport', month: '2026-09', categoryId: 'cat_exp_transport', amount: 250000 },
@@ -39,188 +52,36 @@ export const DEFAULT_BUDGETS = [
   { id: 'b_other', month: '2026-09', categoryId: 'cat_exp_other', amount: 150000 }
 ];
 
-export const DEFAULT_GOALS = [
+export const DEMO_GOALS = [
   { id: 'g1', name: '🏠 내 집 마련 주택자금', targetAmount: 50000000, currentAmount: 32500000, targetDate: '2027-12-31', icon: '🏠', color: '#6366f1' },
   { id: 'g2', name: '✈️ 부부 10주년 리프레시 여행', targetAmount: 6000000, currentAmount: 4200000, targetDate: '2027-06-30', icon: '✈️', color: '#06b6d4' },
   { id: 'g3', name: '🛡️ 우리집 비상금 펀드', targetAmount: 10000000, currentAmount: 8500000, targetDate: '2026-12-31', icon: '🛡️', color: '#10b981' }
 ];
 
-export const DEFAULT_ACCOUNTS = [
+export const DEMO_ACCOUNTS = [
   { id: 'acc1', name: '공동 생활비 통장', type: 'bank', owner: 'shared', balance: 4250000, bankName: '국민은행' },
   { id: 'acc2', name: '남편 월급 통장', type: 'bank', owner: 'husband', balance: 1850000, bankName: '신한은행' },
   { id: 'acc3', name: '아내 월급 통장', type: 'bank', owner: 'wife', balance: 2100000, bankName: '카카오뱅크' },
   { id: 'card1', name: '공동 신용카드', type: 'card', owner: 'shared', balance: -620000, bankName: '현대카드' }
 ];
 
-export function generateInitialTransactions() {
-  const now = new Date();
-  const year = 2026;
-  const month = 9; // September 2026
+export function generateDemoTransactions() {
+  return [
+    { id: 'tx_202609_inc1', date: '2026-09-01', type: 'income', amount: 3200000, userId: 'husband', categoryId: 'cat_inc_salary', sharedType: 'shared', paymentMethod: 'bank', isFixed: true, memo: '9월 남편 월급 입금', createdAt: '2026-09-01T09:00:00.000Z' },
+    { id: 'tx_202609_inc2', date: '2026-09-01', type: 'income', amount: 2500000, userId: 'wife', categoryId: 'cat_inc_salary', sharedType: 'shared', paymentMethod: 'bank', isFixed: true, memo: '9월 아내 월급 입금', createdAt: '2026-09-01T09:05:00.000Z' },
+    { id: 'tx_202609_inc3', date: '2026-09-03', type: 'income', amount: 350000, userId: 'husband', categoryId: 'cat_inc_side', sharedType: 'husband', paymentMethod: 'bank', isFixed: false, memo: '외주 프로젝트 부수입', createdAt: '2026-09-03T14:20:00.000Z' },
 
-  const transactions = [
-    // Current Month (2026-09) Income
-    {
-      id: 'tx_202609_inc1',
-      date: '2026-09-01',
-      type: 'income',
-      amount: 3200000,
-      userId: 'husband',
-      categoryId: 'cat_inc_salary',
-      sharedType: 'shared',
-      paymentMethod: 'bank',
-      isFixed: true,
-      memo: '9월 남편 월급 입금',
-      createdAt: '2026-09-01T09:00:00.000Z'
-    },
-    {
-      id: 'tx_202609_inc2',
-      date: '2026-09-01',
-      type: 'income',
-      amount: 2500000,
-      userId: 'wife',
-      categoryId: 'cat_inc_salary',
-      sharedType: 'shared',
-      paymentMethod: 'bank',
-      isFixed: true,
-      memo: '9월 아내 월급 입금',
-      createdAt: '2026-09-01T09:05:00.000Z'
-    },
-    {
-      id: 'tx_202609_inc3',
-      date: '2026-09-03',
-      type: 'income',
-      amount: 350000,
-      userId: 'husband',
-      categoryId: 'cat_inc_side',
-      sharedType: 'husband',
-      paymentMethod: 'bank',
-      isFixed: false,
-      memo: '외주 프로젝트 부수입',
-      createdAt: '2026-09-03T14:20:00.000Z'
-    },
+    { id: 'tx_202609_exp1', date: '2026-09-01', type: 'expense', amount: 800000, userId: 'husband', categoryId: 'cat_exp_living', sharedType: 'shared', paymentMethod: 'bank', isFixed: true, memo: '아파트 관리비 & 월세', createdAt: '2026-09-01T10:00:00.000Z' },
+    { id: 'tx_202609_exp2', date: '2026-09-01', type: 'expense', amount: 450000, userId: 'wife', categoryId: 'cat_exp_finance', sharedType: 'shared', paymentMethod: 'bank', isFixed: true, memo: '부부 통합 실손/암보험료', createdAt: '2026-09-01T11:00:00.000Z' },
+    { id: 'tx_202609_exp3', date: '2026-09-02', type: 'expense', amount: 142000, userId: 'wife', categoryId: 'cat_exp_food', sharedType: 'shared', paymentMethod: 'card', isFixed: false, memo: '이마트 주말 장보기', createdAt: '2026-09-02T16:30:00.000Z' },
+    { id: 'tx_202609_exp4', date: '2026-09-03', type: 'expense', amount: 45000, userId: 'husband', categoryId: 'cat_exp_food', sharedType: 'shared', paymentMethod: 'card', isFixed: false, memo: '저녁 삼겹살 외식', createdAt: '2026-09-03T19:40:00.000Z' },
+    { id: 'tx_202609_exp5', date: '2026-09-03', type: 'expense', amount: 12000, userId: 'husband', categoryId: 'cat_exp_food', sharedType: 'husband', paymentMethod: 'card', isFixed: false, memo: '점심 후 스타벅스 커피', createdAt: '2026-09-03T12:30:00.000Z' },
+    { id: 'tx_202609_exp6', date: '2026-09-04', type: 'expense', amount: 85000, userId: 'wife', categoryId: 'cat_exp_shopping', sharedType: 'wife', paymentMethod: 'card', isFixed: false, memo: '가을 신상 블라우스 구매', createdAt: '2026-09-04T13:10:00.000Z' },
+    { id: 'tx_202609_exp7', date: '2026-09-04', type: 'expense', amount: 68000, userId: 'husband', categoryId: 'cat_exp_relation', sharedType: 'shared', paymentMethod: 'card', isFixed: false, memo: '금요일 영화관 데이트 & 팝콘', createdAt: '2026-09-04T20:15:00.000Z' },
+    { id: 'tx_202609_exp8', date: '2026-09-04', type: 'expense', amount: 55000, userId: 'husband', categoryId: 'cat_exp_transport', sharedType: 'shared', paymentMethod: 'card', isFixed: false, memo: '주유소 기름 만탱크 주유', createdAt: '2026-09-04T18:00:00.000Z' },
 
-    // Current Month (2026-09) Expenses
-    {
-      id: 'tx_202609_exp1',
-      date: '2026-09-01',
-      type: 'expense',
-      amount: 800000,
-      userId: 'husband',
-      categoryId: 'cat_exp_living',
-      sharedType: 'shared',
-      paymentMethod: 'bank',
-      isFixed: true,
-      memo: '아파트 관리비 & 월세',
-      createdAt: '2026-09-01T10:00:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp2',
-      date: '2026-09-01',
-      type: 'expense',
-      amount: 450000,
-      userId: 'wife',
-      categoryId: 'cat_exp_finance',
-      sharedType: 'shared',
-      paymentMethod: 'bank',
-      isFixed: true,
-      memo: '부부 통합 실손/암보험료',
-      createdAt: '2026-09-01T11:00:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp3',
-      date: '2026-09-02',
-      type: 'expense',
-      amount: 142000,
-      userId: 'wife',
-      categoryId: 'cat_exp_food',
-      sharedType: 'shared',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '이마트 주말 장보기',
-      createdAt: '2026-09-02T16:30:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp4',
-      date: '2026-09-03',
-      type: 'expense',
-      amount: 45000,
-      userId: 'husband',
-      categoryId: 'cat_exp_food',
-      sharedType: 'shared',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '저녁 삼겹살 외식',
-      createdAt: '2026-09-03T19:40:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp5',
-      date: '2026-09-03',
-      type: 'expense',
-      amount: 12000,
-      userId: 'husband',
-      categoryId: 'cat_exp_food',
-      sharedType: 'husband',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '점심 후 스타벅스 커피',
-      createdAt: '2026-09-03T12:30:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp6',
-      date: '2026-09-04',
-      type: 'expense',
-      amount: 85000,
-      userId: 'wife',
-      categoryId: 'cat_exp_shopping',
-      sharedType: 'wife',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '가을 신상 블라우스 구매',
-      createdAt: '2026-09-04T13:10:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp7',
-      date: '2026-09-04',
-      type: 'expense',
-      amount: 68000,
-      userId: 'husband',
-      categoryId: 'cat_exp_relation',
-      sharedType: 'shared',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '금요일 영화관 데이트 & 팝콘',
-      createdAt: '2026-09-04T20:15:00.000Z'
-    },
-    {
-      id: 'tx_202609_exp8',
-      date: '2026-09-04',
-      type: 'expense',
-      amount: 55000,
-      userId: 'husband',
-      categoryId: 'cat_exp_transport',
-      sharedType: 'shared',
-      paymentMethod: 'card',
-      isFixed: false,
-      memo: '주유소 기름 만탱크 주유',
-      createdAt: '2026-09-04T18:00:00.000Z'
-    },
+    { id: 'tx_202609_tr1', date: '2026-09-01', type: 'transfer', amount: 1500000, userId: 'husband', categoryId: '', sharedType: 'shared', paymentMethod: 'bank', isFixed: false, memo: '남편 월급계좌 → 공동 생활비 통장 이체', createdAt: '2026-09-01T09:10:00.000Z' },
 
-    // Transfer Example (Excluded from Income & Expense)
-    {
-      id: 'tx_202609_tr1',
-      date: '2026-09-01',
-      type: 'transfer',
-      amount: 1500000,
-      userId: 'husband',
-      categoryId: '',
-      sharedType: 'shared',
-      paymentMethod: 'bank',
-      isFixed: false,
-      memo: '남편 월급계좌 → 공동 생활비 통장 이체',
-      createdAt: '2026-09-01T09:10:00.000Z'
-    },
-
-    // Historical Months for Trend Analysis (2026-04 ~ 2026-08)
     { id: 'h_08_inc', date: '2026-08-01', type: 'income', amount: 5800000, userId: 'husband', categoryId: 'cat_inc_salary', sharedType: 'shared', isFixed: true, memo: '8월 부부 급여 합산' },
     { id: 'h_08_exp1', date: '2026-08-10', type: 'expense', amount: 1650000, userId: 'husband', categoryId: 'cat_exp_living', sharedType: 'shared', isFixed: true, memo: '8월 고정비' },
     { id: 'h_08_exp2', date: '2026-08-20', type: 'expense', amount: 1530000, userId: 'wife', categoryId: 'cat_exp_food', sharedType: 'shared', isFixed: false, memo: '8월 변동비 식비/여가' },
@@ -241,6 +102,13 @@ export function generateInitialTransactions() {
     { id: 'h_04_exp1', date: '2026-04-10', type: 'expense', amount: 1580000, userId: 'husband', categoryId: 'cat_exp_living', sharedType: 'shared', isFixed: true, memo: '4월 고정비' },
     { id: 'h_04_exp2', date: '2026-04-22', type: 'expense', amount: 1680000, userId: 'wife', categoryId: 'cat_exp_shopping', sharedType: 'shared', isFixed: false, memo: '4월 가전제품' }
   ];
+}
 
-  return transactions;
+/** 과거 버전이 클라우드/로컬에 심어둔 샘플 데이터를 식별하기 위한 ID 접두사 */
+export const SAMPLE_ID_PREFIXES = ['tx_202609_', 'h_04_', 'h_05_', 'h_06_', 'h_07_', 'h_08_'];
+export const SAMPLE_BUDGET_IDS = DEMO_BUDGETS.map(b => b.id);
+export const SAMPLE_GOAL_IDS = DEMO_GOALS.map(g => g.id);
+
+export function isSampleTransactionId(id) {
+  return SAMPLE_ID_PREFIXES.some(p => String(id || '').startsWith(p));
 }

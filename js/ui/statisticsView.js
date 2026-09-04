@@ -13,18 +13,30 @@ import {
   filterTransactionsByMonth 
 } from '../calculations.js';
 import { StorageManager } from '../storage.js';
+import { esc } from '../utils.js';
 
 export function renderStatisticsView(containerEl, currentMonthStr) {
   const transactions = StorageManager.getTransactions();
   const categories = StorageManager.getCategories();
   const users = StorageManager.getUsers();
 
-  const husbandName = users.husband ? users.husband.name : '남편';
-  const wifeName = users.wife ? users.wife.name : '아내';
+  const husbandName = users.husband.name;
+  const wifeName = users.wife.name;
 
   let activeTab = 'monthly'; // 'monthly' | 'trend' | 'category' | 'user'
 
+  // ✅ Chart.js 인스턴스를 추적해 탭 전환 시 반드시 파기합니다.
+  //    (기존에는 계속 쌓여 메모리 누수와 "Canvas is already in use" 오류를 유발했습니다)
+  let chartInstance = null;
+  function destroyChart() {
+    if (chartInstance) {
+      try { chartInstance.destroy(); } catch (e) { /* 이미 파기됨 */ }
+      chartInstance = null;
+    }
+  }
+
   function renderTabContent() {
+    destroyChart();
     const contentBox = containerEl.querySelector('#stats-tab-content');
 
     if (activeTab === 'monthly') {
@@ -77,14 +89,14 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
         <div class="card stat-metric-card">
           <span class="metric-icon">🏆</span>
           <div class="metric-title">가장 많이 쓴 카테고리</div>
-          <div class="metric-value text-indigo">${topCategory}</div>
+          <div class="metric-value text-indigo">${esc(topCategory)}</div>
           <div class="metric-sub">${catBreakdown.categories[0] ? formatCurrency(catBreakdown.categories[0].amount) + ' (' + catBreakdown.categories[0].percentage.toFixed(1) + '%)' : ''}</div>
         </div>
 
         <div class="card stat-metric-card">
           <span class="metric-icon">📅</span>
           <div class="metric-title">지출 피크 날짜</div>
-          <div class="metric-value text-rose">${maxDay}</div>
+          <div class="metric-value text-rose">${esc(maxDay)}</div>
           <div class="metric-sub">${formatCurrency(maxDayAmount)} 소비</div>
         </div>
 
@@ -138,7 +150,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
       const expenses = trends.map(t => t.totalExpense);
       const savingsRates = trends.map(t => t.savingsRate);
 
-      new window.Chart(ctx, {
+      chartInstance = new window.Chart(ctx, {
         type: 'bar',
         data: {
           labels,
@@ -213,8 +225,8 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
             ${catBreakdown.categories.map(c => `
               <div class="cat-detail-row">
                 <div class="cat-detail-left">
-                  <span class="cat-dot" style="background: ${c.color}"></span>
-                  <span>${c.icon} ${c.name}</span>
+                  <span class="cat-dot" style="background: ${esc(c.color)}"></span>
+                  <span>${esc(c.icon)} ${esc(c.name)}</span>
                 </div>
                 <div class="cat-detail-right">
                   <strong>${formatCurrency(c.amount)}</strong>
@@ -231,7 +243,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
       const ctx = targetEl.querySelector('#canvas-cat-chart');
       if (!ctx || !window.Chart || catBreakdown.categories.length === 0) return;
 
-      new window.Chart(ctx, {
+      chartInstance = new window.Chart(ctx, {
         type: 'doughnut',
         data: {
           labels: catBreakdown.categories.map(c => c.name),
@@ -271,11 +283,11 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
             <strong>${formatCurrency(userBd.sharedAmount)}</strong>
           </div>
           <div class="u-sum-item">
-            <span>👨 ${husbandName} 총지출</span>
+            <span>👨 ${esc(husbandName)} 총지출</span>
             <strong>${formatCurrency(userBd.husbandTotalSpent)}</strong>
           </div>
           <div class="u-sum-item">
-            <span>👩 ${wifeName} 총지출</span>
+            <span>👩 ${esc(wifeName)} 총지출</span>
             <strong>${formatCurrency(userBd.wifeTotalSpent)}</strong>
           </div>
         </div>
@@ -286,7 +298,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
       const ctx = targetEl.querySelector('#canvas-user-chart');
       if (!ctx || !window.Chart) return;
 
-      new window.Chart(ctx, {
+      chartInstance = new window.Chart(ctx, {
         type: 'bar',
         data: {
           labels: ['공동생활비', `${husbandName} 개인지출`, `${wifeName} 개인지출`],

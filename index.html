@@ -2,13 +2,16 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>우리집 가계부 — 부부 재정 관리 대시보드</title>
   
   <!-- Modern Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- 한글 전용 폰트: Plus Jakarta Sans 에는 한글 글리프가 없어 시스템 폰트로 폴백됩니다 -->
+  <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   
   <!-- Chart.js CDN for interactive financial graphs -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -34,7 +37,7 @@
     <!-- Month Navigation Bar -->
     <div class="month-selector">
       <button class="btn-month-nav" id="btn-prev-month" title="이전 달">&lt;</button>
-      <div class="current-month-display" id="display-current-month">2026년 9월</div>
+      <div class="current-month-display" id="display-current-month">&nbsp;</div>
       <button class="btn-month-nav" id="btn-next-month" title="다음 달">&gt;</button>
       <button class="btn-today-chip" id="btn-reset-today">오늘</button>
     </div>

@@ -1,20 +1,22 @@
 /**
  * Transaction Quick Entry & Edit Modal Controller
- * Floating (+) Action Button Modal for Fast 5-10 second recording
+ * 빠른 입력(5~10초)을 목표로 하는 모달
  */
 
 import { StorageManager } from '../storage.js';
+import { esc, todayLocalStr, parseAmount, thousands } from '../utils.js';
 
 export class TransactionModal {
   constructor(modalOverlayEl, onSaveSuccess) {
     this.modalEl = modalOverlayEl;
     this.onSaveSuccess = onSaveSuccess;
     this.editingId = null;
-    this.selectedType = 'expense'; // 'expense' | 'income' | 'transfer'
+    this.isSaving = false;
+
+    this.selectedType = 'expense';      // 'expense' | 'income' | 'transfer'
     this.selectedUserId = 'husband';
     this.selectedSharedType = 'shared'; // 'shared' | 'husband' | 'wife'
     this.selectedCategoryId = '';
-    this.selectedPaymentMethod = 'card';
     this.isFixed = false;
 
     this.initElements();
@@ -41,15 +43,31 @@ export class TransactionModal {
     this.paymentMethodSelect = this.modalEl.querySelector('#modal-select-payment');
     this.btnFixedToggle = this.modalEl.querySelector('#modal-btn-fixed');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
+    this.categoryGroup = this.categoryGrid ? this.categoryGrid.closest('.form-group') : null;
 
     this.btnClose = this.modalEl.querySelector('#modal-btn-close');
     this.btnCancel = this.modalEl.querySelector('#modal-btn-cancel');
     this.btnSave = this.modalEl.querySelector('#modal-btn-save');
     this.modalTitle = this.modalEl.querySelector('#modal-title-text');
+
+    // 금액 천단위 미리보기 영역을 동적으로 삽입
+    this.amountHint = document.createElement('div');
+    this.amountHint.className = 'amount-hint';
+    this.amountHint.setAttribute('aria-live', 'polite');
+    const amountBox = this.modalEl.querySelector('.amount-input-box');
+    if (amountBox && amountBox.parentNode) {
+      amountBox.parentNode.insertBefore(this.amountHint, amountBox.nextSibling);
+    }
+
+    // 모바일 숫자 키패드
+    if (this.inputAmount) {
+      this.inputAmount.setAttribute('inputmode', 'numeric');
+      this.inputAmount.setAttribute('min', '0');
+      this.inputAmount.setAttribute('step', '1');
+    }
   }
 
   bindEvents() {
-    // Modal Overlay close on backdrop click
     this.modalEl.addEventListener('click', (e) => {
       if (e.target === this.modalEl) this.close();
     });
@@ -57,21 +75,17 @@ export class TransactionModal {
     if (this.btnClose) this.btnClose.addEventListener('click', () => this.close());
     if (this.btnCancel) this.btnCancel.addEventListener('click', () => this.close());
 
-    // Type Switch Tabs
     this.typeExpenseBtn.addEventListener('click', () => this.setType('expense'));
     this.typeIncomeBtn.addEventListener('click', () => this.setType('income'));
     this.typeTransferBtn.addEventListener('click', () => this.setType('transfer'));
 
-    // User Switch
     this.userHusbandBtn.addEventListener('click', () => this.setUser('husband'));
     this.userWifeBtn.addEventListener('click', () => this.setUser('wife'));
 
-    // Shared Type Switch
     this.sharedBtn.addEventListener('click', () => this.setSharedType('shared'));
     this.husbandPersonalBtn.addEventListener('click', () => this.setSharedType('husband'));
     this.wifePersonalBtn.addEventListener('click', () => this.setSharedType('wife'));
 
-    // Fixed / Variable toggle
     if (this.btnFixedToggle) {
       this.btnFixedToggle.addEventListener('click', () => {
         this.isFixed = !this.isFixed;
@@ -79,65 +93,97 @@ export class TransactionModal {
       });
     }
 
-    // Submit Handler
     this.btnSave.addEventListener('click', () => this.save());
+
+    // 금액 입력 시 천단위 미리보기
+    if (this.inputAmount) {
+      this.inputAmount.addEventListener('input', () => this.updateAmountHint());
+    }
+
+    // ESC 닫기 / Enter 저장 (모달이 열려 있을 때만)
+    this.keyHandler = (e) => {
+      if (!this.isOpen()) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.close();
+      } else if (e.key === 'Enter' && !e.isComposing) {
+        // textarea 가 아닌 곳에서 Enter → 저장
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag !== 'TEXTAREA') {
+          e.preventDefault();
+          this.save();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.keyHandler);
+  }
+
+  isOpen() {
+    return this.modalEl.classList.contains('open');
+  }
+
+  updateAmountHint() {
+    if (!this.amountHint) return;
+    const val = parseAmount(this.inputAmount.value);
+    this.amountHint.textContent = (val && val > 0) ? `${thousands(val)}원` : '';
   }
 
   open(editingTxId = null, defaultMonthStr = null) {
     this.editingId = editingTxId;
+    this.isSaving = false;
+    this.setSaveButtonState(false);
+
     const users = StorageManager.getUsers();
+    this.userHusbandBtn.textContent = `👨 ${users.husband.name}`;
+    this.userWifeBtn.textContent = `👩 ${users.wife.name}`;
+    this.husbandPersonalBtn.textContent = `👨 ${users.husband.name} 개인`;
+    this.wifePersonalBtn.textContent = `👩 ${users.wife.name} 개인`;
 
-    // Update user button names
-    if (users.husband) this.userHusbandBtn.textContent = `👨 ${users.husband.name}`;
-    if (users.wife) this.userWifeBtn.textContent = `👩 ${users.wife.name}`;
-
-    if (users.husband) this.husbandPersonalBtn.textContent = `👨 ${users.husband.name} 개인`;
-    if (users.wife) this.wifePersonalBtn.textContent = `👩 ${users.wife.name} 개인`;
+    let paymentMethod = 'card';
 
     if (editingTxId) {
-      // Edit Mode
-      const transactions = StorageManager.getTransactions();
-      const tx = transactions.find(t => t.id === editingTxId);
+      const tx = StorageManager.getTransactions().find(t => t.id === editingTxId);
       if (tx) {
         this.modalTitle.textContent = '✏️ 거래 정보 수정';
-        this.selectedType = tx.type;
+        this.selectedType = tx.type || 'expense';
         this.selectedUserId = tx.userId || 'husband';
         this.selectedSharedType = tx.sharedType || 'shared';
         this.selectedCategoryId = tx.categoryId || '';
-        this.selectedPaymentMethod = tx.paymentMethod || 'card';
         this.isFixed = !!tx.isFixed;
+        paymentMethod = tx.paymentMethod || 'card';
 
-        this.inputAmount.value = tx.amount || 0;
-        this.inputDate.value = tx.date || new Date().toISOString().slice(0, 10);
+        this.inputAmount.value = tx.amount || '';
+        this.inputDate.value = tx.date || todayLocalStr();
         this.inputMemo.value = tx.memo || '';
       }
     } else {
-      // New Mode
       this.modalTitle.textContent = '⚡ 빠른 거래 등록';
       this.selectedType = 'expense';
       this.selectedUserId = 'husband';
       this.selectedSharedType = 'shared';
       this.selectedCategoryId = '';
-      this.selectedPaymentMethod = 'card';
       this.isFixed = false;
+      paymentMethod = 'card';
 
       this.inputAmount.value = '';
       this.inputMemo.value = '';
 
-      // Default date logic
-      const todayStr = new Date().toISOString().slice(0, 10);
-      if (defaultMonthStr && !todayStr.startsWith(defaultMonthStr)) {
-        this.inputDate.value = `${defaultMonthStr}-01`;
-      } else {
-        this.inputDate.value = todayStr;
-      }
+      // 로컬 타임존 기준 오늘 (UTC 기준이면 새벽에 하루 전으로 기록됨)
+      const todayStr = todayLocalStr();
+      this.inputDate.value = (defaultMonthStr && !todayStr.startsWith(defaultMonthStr))
+        ? `${defaultMonthStr}-01`
+        : todayStr;
     }
+
+    // ✅ select 의 실제 DOM 값을 반드시 동기화 (미설정 시 항상 '카드'로 저장되던 버그)
+    if (this.paymentMethodSelect) this.paymentMethodSelect.value = paymentMethod;
 
     this.updateTypeTabs();
     this.updateUserButtons();
     this.updateSharedButtons();
     this.updateFixedButton();
     this.renderCategoryChips();
+    this.updateAmountHint();
 
     this.modalEl.classList.add('open');
     setTimeout(() => this.inputAmount.focus(), 100);
@@ -146,10 +192,15 @@ export class TransactionModal {
   close() {
     this.modalEl.classList.remove('open');
     this.editingId = null;
+    this.isSaving = false;
+    this.setSaveButtonState(false);
   }
 
   setType(type) {
+    if (this.selectedType === type) return;
     this.selectedType = type;
+    // ✅ 타입이 바뀌면 카테고리 선택을 초기화 (수입 거래에 지출 카테고리가 붙던 버그)
+    this.selectedCategoryId = '';
     this.updateTypeTabs();
     this.renderCategoryChips();
   }
@@ -170,11 +221,12 @@ export class TransactionModal {
     if (this.selectedType === 'income') this.typeIncomeBtn.classList.add('active');
     if (this.selectedType === 'transfer') this.typeTransferBtn.classList.add('active');
 
-    // Show/hide expense-only groups
-    if (this.selectedType === 'expense') {
-      if (this.fixedGroup) this.fixedGroup.style.display = 'block';
-    } else {
-      if (this.fixedGroup) this.fixedGroup.style.display = 'none';
+    if (this.fixedGroup) {
+      this.fixedGroup.style.display = this.selectedType === 'expense' ? 'block' : 'none';
+    }
+    // 이체는 카테고리 개념이 없으므로 아예 숨깁니다
+    if (this.categoryGroup) {
+      this.categoryGroup.style.display = this.selectedType === 'transfer' ? 'none' : 'block';
     }
   }
 
@@ -203,27 +255,32 @@ export class TransactionModal {
   }
 
   renderCategoryChips() {
+    if (this.selectedType === 'transfer') {
+      this.selectedCategoryId = '';
+      this.categoryGrid.innerHTML = '';
+      return;
+    }
+
     const categories = StorageManager.getCategories();
     const filteredCats = categories.filter(c => c.type === this.selectedType);
 
     if (filteredCats.length === 0) {
+      this.selectedCategoryId = '';
       this.categoryGrid.innerHTML = '<div class="text-muted">선택 가능한 카테고리가 없습니다.</div>';
       return;
     }
 
-    if (!this.selectedCategoryId && filteredCats.length > 0) {
+    // 선택된 카테고리가 현재 타입에 없으면 첫 번째로 보정
+    if (!filteredCats.some(c => c.id === this.selectedCategoryId)) {
       this.selectedCategoryId = filteredCats[0].id;
     }
 
-    this.categoryGrid.innerHTML = filteredCats.map(cat => {
-      const isSelected = cat.id === this.selectedCategoryId;
-      return `
-        <button class="chip-cat ${isSelected ? 'active' : ''}" data-id="${cat.id}">
-          <span>${cat.icon}</span>
-          <span>${cat.name}</span>
-        </button>
-      `;
-    }).join('');
+    this.categoryGrid.innerHTML = filteredCats.map(cat => `
+      <button type="button" class="chip-cat ${cat.id === this.selectedCategoryId ? 'active' : ''}" data-id="${esc(cat.id)}">
+        <span>${esc(cat.icon)}</span>
+        <span>${esc(cat.name)}</span>
+      </button>
+    `).join('');
 
     this.categoryGrid.querySelectorAll('.chip-cat').forEach(chip => {
       chip.addEventListener('click', (e) => {
@@ -234,9 +291,17 @@ export class TransactionModal {
     });
   }
 
+  setSaveButtonState(saving) {
+    if (!this.btnSave) return;
+    this.btnSave.disabled = saving;
+    this.btnSave.textContent = saving ? '저장 중…' : '저장하기';
+  }
+
   async save() {
-    const amountVal = Number(this.inputAmount.value);
-    if (!amountVal || isNaN(amountVal) || amountVal <= 0) {
+    if (this.isSaving) return; // 연타로 인한 중복 등록 방지
+
+    const amountVal = parseAmount(this.inputAmount.value);
+    if (amountVal === null || amountVal <= 0) {
       alert('금액을 올바르게 입력해주세요 (0원 초과).');
       this.inputAmount.focus();
       return;
@@ -245,30 +310,44 @@ export class TransactionModal {
     const dateVal = this.inputDate.value;
     if (!dateVal) {
       alert('날짜를 선택해주세요.');
+      this.inputDate.focus();
       return;
     }
 
-    const memoVal = this.inputMemo.value.trim();
+    if (this.selectedType !== 'transfer' && !this.selectedCategoryId) {
+      alert('카테고리를 선택해주세요.');
+      return;
+    }
+
+    this.isSaving = true;
+    this.setSaveButtonState(true);
 
     const txData = {
       date: dateVal,
       type: this.selectedType,
       amount: amountVal,
       userId: this.selectedUserId,
-      categoryId: this.selectedCategoryId,
+      // ✅ 이체는 카테고리를 비웁니다 (직전 카테고리가 따라붙던 버그)
+      categoryId: this.selectedType === 'transfer' ? '' : this.selectedCategoryId,
       sharedType: this.selectedSharedType,
       paymentMethod: this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card',
       isFixed: this.selectedType === 'expense' ? this.isFixed : false,
-      memo: memoVal
+      memo: this.inputMemo.value.trim()
     };
 
-    if (this.editingId) {
-      await StorageManager.updateTransaction(this.editingId, txData);
-    } else {
-      await StorageManager.addTransaction(txData);
+    try {
+      if (this.editingId) {
+        await StorageManager.updateTransaction(this.editingId, txData);
+      } else {
+        await StorageManager.addTransaction(txData);
+      }
+      this.close();
+      if (this.onSaveSuccess) this.onSaveSuccess();
+    } catch (e) {
+      console.error('거래 저장 실패:', e);
+      alert('저장 중 문제가 발생했습니다. 다시 시도해주세요.');
+      this.isSaving = false;
+      this.setSaveButtonState(false);
     }
-
-    this.close();
-    if (this.onSaveSuccess) this.onSaveSuccess();
   }
 }

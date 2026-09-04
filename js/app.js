@@ -1,11 +1,13 @@
 /**
- * Main Application Orchestrator & Router with Supabase Realtime Sync & Diagnostics
+ * Main Application Orchestrator & Router with Supabase Realtime Sync
  * Couple Finance Dashboard ("우리집 가계부")
  */
 
-import { StorageManager } from './storage.js';
-import { SupabaseSyncEngine, getConnectionStatus } from './supabaseClient.js';
+import { StorageManager, isDemoMode } from './storage.js';
+import { SupabaseSyncEngine, getConnectionStatus, onStatusChange } from './supabaseClient.js';
 import { getPreviousMonthStr, getNextMonthStr } from './calculations.js';
+import { currentMonthLocalStr } from './utils.js';
+import { restoreSession, isAuthenticated, hasSkippedLogin, showLoginGate, onAuthChange, signOut } from './auth.js';
 
 import { renderDashboardView } from './ui/dashboardView.js';
 import { renderTransactionsView } from './ui/transactionsView.js';
@@ -17,73 +19,147 @@ import { TransactionModal } from './ui/transactionModal.js';
 class CoupleFinanceApp {
   constructor() {
     this.activeTab = 'dashboard';
-    
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-    
-    this.currentMonthStr = (currentYear >= 2026) ? `${currentYear}-${currentMonth}` : '2026-09';
+    this.pendingRender = false;
+    this.syncState = isDemoMode() ? 'demo' : 'checking';
 
-    this.initStorage();
+    // ✅ 기기 시계를 그대로 신뢰합니다 (기존의 '2026년 이전이면 2026-09' 하드코딩 제거)
+    this.currentMonthStr = currentMonthLocalStr();
+
+    StorageManager.init();
     this.initDOM();
     this.initModal();
     this.bindGlobalEvents();
-    this.initRealtimeSync();
 
     this.render();
-  }
-
-  initStorage() {
-    StorageManager.init();
+    this.initRealtimeSync();
   }
 
   async initRealtimeSync() {
-    await StorageManager.syncFromCloud();
+    if (isDemoMode()) {
+      this.updateCloudBadge();
+      return;
+    }
+
+    // 연결 상태가 바뀌면 뱃지를 즉시 갱신
+    onStatusChange(() => this.updateCloudBadge());
+
+    // ✅ 로그인 게이트: 인증된 사용자만 클라우드 데이터에 접근합니다.
+    await restoreSession();
+    onAuthChange(() => this.updateCloudBadge());
+
+    if (!isAuthenticated() && !hasSkippedLogin()) {
+      showLoginGate({
+        onSuccess: () => this.startCloudSync(),
+        onSkip: () => { this.updateCloudBadge(); }
+      });
+      this.updateCloudBadge();
+      return;
+    }
+
+    await this.startCloudSync();
+  }
+
+  async startCloudSync() {
     await SupabaseSyncEngine.checkConnection();
+    this.syncState = await StorageManager.syncFromCloud();
     this.updateCloudBadge();
     this.render();
 
-    SupabaseSyncEngine.subscribeToChanges(async (payload) => {
-      console.log('⚡ Real-time update from partner device:', payload);
-      await StorageManager.syncFromCloud();
-      this.render();
+    SupabaseSyncEngine.subscribeToChanges(async () => {
+      this.syncState = await StorageManager.syncFromCloud();
+      this.updateCloudBadge();
+      this.requestRender();
     });
+
+    // 오프라인에서 복귀하면 밀린 변경분을 다시 올린다
+    window.addEventListener('online', async () => {
+      this.syncState = await StorageManager.syncFromCloud();
+      this.updateCloudBadge();
+      this.requestRender();
+    });
+
+    // 밀린 큐가 남아 있으면 주기적으로 재시도
+    setInterval(async () => {
+      if (StorageManager.getPendingCount() > 0) {
+        this.syncState = await StorageManager.syncFromCloud();
+        this.updateCloudBadge();
+        this.requestRender();
+      }
+    }, 30000);
+  }
+
+  /** 모달 입력 중에는 화면을 갈아엎지 않고 닫힌 뒤에 반영 */
+  requestRender() {
+    if (this.modal && this.modal.isOpen()) {
+      this.pendingRender = true;
+      return;
+    }
+    this.render();
   }
 
   updateCloudBadge() {
     const badgeEl = document.getElementById('cloud-sync-badge');
     if (!badgeEl) return;
 
+    const pending = StorageManager.getPendingCount();
+    badgeEl.onclick = null;
+
+    if (isDemoMode()) {
+      badgeEl.className = 'cloud-badge badge-offline';
+      badgeEl.innerHTML = '🧪 데모 모드 (동기화 안 함)';
+      badgeEl.title = '샘플 데이터를 보는 중입니다. 클라우드에 저장되지 않습니다. 설정에서 실사용 모드로 전환하세요.';
+      return;
+    }
+
+    if (pending > 0) {
+      badgeEl.className = 'cloud-badge badge-warning-sync';
+      badgeEl.innerHTML = `⏳ 저장 대기 ${pending}건`;
+      badgeEl.title = `아직 클라우드에 올리지 못한 변경이 ${pending}건 있습니다. 인터넷이 연결되면 자동으로 전송됩니다.`;
+      return;
+    }
+
+    if (!isAuthenticated()) {
+      badgeEl.className = 'cloud-badge badge-offline';
+      badgeEl.innerHTML = '🔒 로컬 모드 (로그인 필요)';
+      badgeEl.title = '로그인하면 배우자 기기와 실시간으로 동기화됩니다. 클릭하여 로그인하세요.';
+      badgeEl.onclick = () => {
+        showLoginGate({
+          onSuccess: () => this.startCloudSync(),
+          onSkip: () => this.updateCloudBadge()
+        });
+      };
+      return;
+    }
+
     const status = getConnectionStatus();
     if (status === 'connected') {
       badgeEl.className = 'cloud-badge badge-connected';
       badgeEl.innerHTML = '☁️ 실시간 연동됨';
       badgeEl.title = 'Supabase 중앙 DB와 실시간 연동 중입니다.';
-      badgeEl.onclick = null;
     } else if (status === 'missing_tables') {
       badgeEl.className = 'cloud-badge badge-error';
       badgeEl.innerHTML = '⚠️ DB 테이블 생성 필요 (클릭)';
-      badgeEl.title = 'Supabase SQL Editor에서 쿼리를 실행하여 테이블을 생성해주세요.';
+      badgeEl.title = 'Supabase SQL Editor 에서 supabase_setup.sql 을 실행해주세요.';
       badgeEl.onclick = () => {
         alert(
-          'Supabase 프로젝트에 아직 가계부 데이터 테이블이 생성되지 않아 연동이 일시 중지되었습니다!\n\n' +
-          '해결 방법 (30초 소요):\n' +
-          '1. Supabase 접속 -> SQL Editor 이동\n' +
-          '2. 안내해 드린 SQL 생성 스크립트를 복사하여 실행(Run)해주시면 바로 연동됩니다.'
+          'Supabase 프로젝트에 가계부 테이블이 아직 없습니다.\n\n' +
+          '해결 방법:\n' +
+          '1. Supabase 접속 → SQL Editor\n' +
+          '2. 프로젝트 폴더의 supabase_setup.sql 전체를 붙여넣고 Run\n\n' +
+          '이 스크립트는 테이블 생성과 함께 RLS(보안 정책)도 같이 적용합니다.'
         );
       };
     } else {
       badgeEl.className = 'cloud-badge badge-offline';
       badgeEl.innerHTML = '📱 로컬 모드';
-      badgeEl.title = '네트워크 연결 또는 Supabase 설정을 확인해주세요.';
-      badgeEl.onclick = null;
+      badgeEl.title = '네트워크 연결 또는 Supabase 설정을 확인해주세요. 입력한 내용은 이 기기에 안전하게 보관됩니다.';
     }
   }
 
   initDOM() {
     this.viewContainer = document.getElementById('main-view-container');
     this.displayMonth = document.getElementById('display-current-month');
-    
+
     this.btnPrevMonth = document.getElementById('btn-prev-month');
     this.btnNextMonth = document.getElementById('btn-next-month');
     this.btnResetToday = document.getElementById('btn-reset-today');
@@ -100,8 +176,18 @@ class CoupleFinanceApp {
   initModal() {
     const modalEl = document.getElementById('transaction-modal');
     this.modal = new TransactionModal(modalEl, () => {
+      this.pendingRender = false;
       this.render();
     });
+
+    // 모달이 닫힐 때 밀린 렌더가 있으면 반영
+    const observer = new MutationObserver(() => {
+      if (!this.modal.isOpen() && this.pendingRender) {
+        this.pendingRender = false;
+        this.render();
+      }
+    });
+    observer.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
   }
 
   bindGlobalEvents() {
@@ -116,45 +202,26 @@ class CoupleFinanceApp {
     });
 
     this.btnResetToday.addEventListener('click', () => {
-      const today = new Date();
-      this.currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      this.currentMonthStr = currentMonthLocalStr();
       this.render();
     });
 
-    if (this.btnHeaderAdd) {
-      this.btnHeaderAdd.addEventListener('click', () => {
-        this.modal.open(null, this.currentMonthStr);
-      });
-    }
-
-    if (this.btnFabAdd) {
-      this.btnFabAdd.addEventListener('click', () => {
-        this.modal.open(null, this.currentMonthStr);
-      });
-    }
-
-    this.sidebarNavItems.forEach(item => {
-      item.addEventListener('click', () => {
-        const tab = item.getAttribute('data-tab');
-        this.switchTab(tab);
-      });
+    [this.btnHeaderAdd, this.btnFabAdd].forEach(btn => {
+      if (btn) btn.addEventListener('click', () => this.modal.open(null, this.currentMonthStr));
     });
 
-    this.bottomNavItems.forEach(item => {
-      item.addEventListener('click', () => {
-        const tab = item.getAttribute('data-tab');
-        this.switchTab(tab);
-      });
+    [...this.sidebarNavItems, ...this.bottomNavItems].forEach(item => {
+      item.addEventListener('click', () => this.switchTab(item.getAttribute('data-tab')));
     });
   }
 
   switchTab(tabName) {
+    if (!tabName) return;
     this.activeTab = tabName;
 
     this.sidebarNavItems.forEach(item => {
       item.classList.toggle('active', item.getAttribute('data-tab') === tabName);
     });
-
     this.bottomNavItems.forEach(item => {
       item.classList.toggle('active', item.getAttribute('data-tab') === tabName);
     });
@@ -169,11 +236,8 @@ class CoupleFinanceApp {
     }
 
     const users = StorageManager.getUsers();
-    const hName = users.husband ? users.husband.name : '남편';
-    const wName = users.wife ? users.wife.name : '아내';
-
     if (this.sidebarUserBadges) {
-      this.sidebarUserBadges.innerHTML = `<span>👨 ${hName}</span> · <span>👩 ${wName}</span>`;
+      this.sidebarUserBadges.textContent = `👨 ${users.husband.name} · 👩 ${users.wife.name}`;
     }
 
     this.updateCloudBadge();
@@ -186,8 +250,8 @@ class CoupleFinanceApp {
       renderDashboardView(this.viewContainer, this.currentMonthStr, (tab) => this.switchTab(tab));
     } else if (this.activeTab === 'transactions') {
       renderTransactionsView(
-        this.viewContainer, 
-        this.currentMonthStr, 
+        this.viewContainer,
+        this.currentMonthStr,
         (editingTxId) => this.modal.open(editingTxId, this.currentMonthStr),
         () => this.render()
       );
@@ -203,4 +267,8 @@ class CoupleFinanceApp {
 
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new CoupleFinanceApp();
+  window.coupleSignOut = async () => {
+    await signOut();
+    window.location.reload();
+  };
 });
