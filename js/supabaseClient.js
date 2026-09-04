@@ -4,14 +4,19 @@
  */
 
 export const SUPABASE_URL = 'https://jzxkxyxlbaedeeaimrlo.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6eGt4eXhsYmFlZGVlYWltcmxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MjYzODYsImV4cCI6MjE0NDEwMjM4Nn0.vHlMgVktBM9gJlSpBMcg8lK_NP1yE7N6UXvVwqQJ7QQ';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6eGt4eXhsYmFlZGVlYWltcmxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MjYzODYsImV4cCI6MjEwNDEwMjM4Nn0.vHlMgVktBM9gJlSpBMcg8lK_NP1yE7N6UXvVwqQJ7QQ';
 
 let supabase = null;
-let connectionStatus = 'checking';
+let connectionStatus = 'checking'; // 'connected' | 'missing_tables' | 'error'
 
 export function getSupabase() {
   if (!supabase && window.supabase) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[Supabase Client Initialized Successfully]');
+    } catch (e) {
+      console.error('[Supabase Init Error]:', e);
+    }
   }
   return supabase;
 }
@@ -22,7 +27,7 @@ export function getConnectionStatus() {
 
 export class SupabaseSyncEngine {
   /**
-   * Subscribe to real-time changes across all key tables in Supabase JS v2
+   * Subscribe to real-time changes across key tables
    */
   static subscribeToChanges(onUpdate) {
     const sb = getSupabase();
@@ -65,12 +70,14 @@ export class SupabaseSyncEngine {
   static async checkConnection() {
     const sb = getSupabase();
     if (!sb) {
+      console.warn('[Supabase Check]: Supabase JS library not loaded yet.');
       connectionStatus = 'error';
       return false;
     }
     try {
       const { data, error } = await sb.from('transactions').select('id').limit(1);
       if (error) {
+        console.warn('[Supabase Query Error]:', error);
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
           connectionStatus = 'missing_tables';
         } else {
@@ -79,8 +86,10 @@ export class SupabaseSyncEngine {
         return false;
       }
       connectionStatus = 'connected';
+      console.log('[Supabase Connection Verified OK!]');
       return true;
     } catch (e) {
+      console.warn('[Supabase Connection Exception]:', e);
       connectionStatus = 'error';
       return false;
     }
@@ -214,6 +223,33 @@ export class SupabaseSyncEngine {
       return true;
     } catch (e) {
       console.warn('Supabase saveGoals error:', e.message);
+      return false;
+    }
+  }
+
+  // --- Categories DB Operations ---
+  static async fetchCategories() {
+    const sb = getSupabase();
+    if (!sb) return null;
+    try {
+      const { data, error } = await sb.from('categories').select('*');
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      console.warn('Supabase fetchCategories error:', e.message);
+      return null;
+    }
+  }
+
+  static async saveCategories(catsList) {
+    const sb = getSupabase();
+    if (!sb) return null;
+    try {
+      const { error } = await sb.from('categories').upsert(catsList);
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveCategories error:', e.message);
       return false;
     }
   }

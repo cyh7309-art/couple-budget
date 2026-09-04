@@ -38,11 +38,11 @@ class CoupleFinanceApp {
   }
 
   async initRealtimeSync() {
-    // Check initial connection status
+    await StorageManager.syncFromCloud();
     await SupabaseSyncEngine.checkConnection();
     this.updateCloudBadge();
+    this.render();
 
-    // Subscribe to Supabase Realtime changes across devices
     SupabaseSyncEngine.subscribeToChanges(async (payload) => {
       console.log('⚡ Real-time update from partner device:', payload);
       await StorageManager.syncFromCloud();
