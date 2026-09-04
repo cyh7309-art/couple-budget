@@ -1,9 +1,10 @@
 /**
- * Main Application Orchestrator & Router
+ * Main Application Orchestrator & Router with Supabase Realtime Sync
  * Couple Finance Dashboard ("우리집 가계부")
  */
 
 import { StorageManager } from './storage.js';
+import { SupabaseSyncEngine } from './supabaseClient.js';
 import { getPreviousMonthStr, getNextMonthStr } from './calculations.js';
 
 import { renderDashboardView } from './ui/dashboardView.js';
@@ -15,26 +16,34 @@ import { TransactionModal } from './ui/transactionModal.js';
 
 class CoupleFinanceApp {
   constructor() {
-    this.activeTab = 'dashboard'; // 'dashboard' | 'transactions' | 'statistics' | 'goals' | 'settings'
+    this.activeTab = 'dashboard';
     
-    // Default month string: '2026-09' (or current calendar month if later)
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
     
-    // If year is 2026 or later, use actual date; default to '2026-09' for preloaded sample consistency
     this.currentMonthStr = (currentYear >= 2026) ? `${currentYear}-${currentMonth}` : '2026-09';
 
     this.initStorage();
     this.initDOM();
     this.initModal();
     this.bindGlobalEvents();
+    this.initRealtimeSync();
 
     this.render();
   }
 
   initStorage() {
     StorageManager.init();
+  }
+
+  initRealtimeSync() {
+    // Subscribe to Supabase Realtime changes across devices
+    SupabaseSyncEngine.subscribeToChanges(async (payload) => {
+      console.log('⚡ Real-time update from partner device:', payload);
+      await StorageManager.syncFromCloud();
+      this.render();
+    });
   }
 
   initDOM() {
@@ -57,7 +66,6 @@ class CoupleFinanceApp {
   initModal() {
     const modalEl = document.getElementById('transaction-modal');
     this.modal = new TransactionModal(modalEl, () => {
-      // On save success callback
       this.render();
     });
   }
@@ -113,7 +121,6 @@ class CoupleFinanceApp {
   switchTab(tabName) {
     this.activeTab = tabName;
 
-    // Update active UI classes
     this.sidebarNavItems.forEach(item => {
       item.classList.toggle('active', item.getAttribute('data-tab') === tabName);
     });
@@ -143,7 +150,6 @@ class CoupleFinanceApp {
   render() {
     this.updateHeaderAndSidebar();
 
-    // Render active tab view
     if (this.activeTab === 'dashboard') {
       renderDashboardView(this.viewContainer, this.currentMonthStr, (tab) => this.switchTab(tab));
     } else if (this.activeTab === 'transactions') {
@@ -163,7 +169,6 @@ class CoupleFinanceApp {
   }
 }
 
-// Instantiate on DOM content ready
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new CoupleFinanceApp();
 });

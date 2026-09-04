@@ -13,17 +13,21 @@
   <!-- Chart.js CDN for interactive financial graphs -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Supabase Cloud DB & Realtime Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Application Stylesheet -->
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
 
-  <!-- App Shell Header -->
+  <!-- App Header -->
   <header class="app-header">
     <div class="header-left">
       <div class="brand-logo">
         <span class="logo-icon">💑</span>
         <h1 class="brand-title">우리집 가계부</h1>
+        <span class="cloud-badge" id="cloud-sync-badge" title="실시간 부부 동기화 연결됨">☁️ 실시간 연동</span>
       </div>
     </div>
 
