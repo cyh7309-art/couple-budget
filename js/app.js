@@ -142,21 +142,21 @@ class CoupleFinanceApp {
 
     if (isDemoMode()) {
       badgeEl.className = 'cloud-badge badge-offline';
-      badgeEl.innerHTML = '🧪 데모 모드 (동기화 안 함)';
+      badgeEl.innerHTML = '<span class="badge-ico">🧪</span><span class="badge-text">데모 모드 (동기화 안 함)</span>';
       badgeEl.title = '샘플 데이터를 보는 중입니다. 클라우드에 저장되지 않습니다. 설정에서 실사용 모드로 전환하세요.';
       return;
     }
 
     if (pending > 0) {
       badgeEl.className = 'cloud-badge badge-warning-sync';
-      badgeEl.innerHTML = `⏳ 저장 대기 ${pending}건`;
+      badgeEl.innerHTML = `<span class="badge-ico">⏳</span><span class="badge-text">저장 대기 ${pending}건</span>`;
       badgeEl.title = `아직 클라우드에 올리지 못한 변경이 ${pending}건 있습니다. 인터넷이 연결되면 자동으로 전송됩니다.`;
       return;
     }
 
     if (!isAuthenticated()) {
       badgeEl.className = 'cloud-badge badge-offline';
-      badgeEl.innerHTML = '🔒 로컬 모드 (로그인 필요)';
+      badgeEl.innerHTML = '<span class="badge-ico">🔒</span><span class="badge-text">로컬 모드 (로그인 필요)</span>';
       badgeEl.title = '로그인하면 배우자 기기와 실시간으로 동기화됩니다. 클릭하여 로그인하세요.';
       badgeEl.onclick = () => {
         showLoginGate({
@@ -170,11 +170,11 @@ class CoupleFinanceApp {
     const status = getConnectionStatus();
     if (status === 'connected') {
       badgeEl.className = 'cloud-badge badge-connected';
-      badgeEl.innerHTML = '☁️ 실시간 연동됨';
+      badgeEl.innerHTML = '<span class="badge-ico">☁️</span><span class="badge-text">실시간 연동됨</span>';
       badgeEl.title = 'Supabase 중앙 DB와 실시간 연동 중입니다.';
     } else if (status === 'missing_tables') {
       badgeEl.className = 'cloud-badge badge-error';
-      badgeEl.innerHTML = '⚠️ DB 테이블 생성 필요 (클릭)';
+      badgeEl.innerHTML = '<span class="badge-ico">⚠️</span><span class="badge-text">DB 테이블 생성 필요 (클릭)</span>';
       badgeEl.title = 'Supabase SQL Editor 에서 supabase_setup.sql 을 실행해주세요.';
       badgeEl.onclick = () => {
         alert(
@@ -187,7 +187,7 @@ class CoupleFinanceApp {
       };
     } else {
       badgeEl.className = 'cloud-badge badge-offline';
-      badgeEl.innerHTML = '📱 로컬 모드';
+      badgeEl.innerHTML = '<span class="badge-ico">📱</span><span class="badge-text">로컬 모드</span>';
       badgeEl.title = '네트워크 연결 또는 Supabase 설정을 확인해주세요. 입력한 내용은 이 기기에 안전하게 보관됩니다.';
     }
   }
