@@ -2,7 +2,7 @@
  * Goals & Accounts View (재정 목표 / 계좌 관리)
  */
 
-import { formatCurrency, calculateAccountBalances } from '../calculations.js';
+import { formatCurrency, calculateAccountBalances, getUpcomingCardPayment, getAccruingCardCycle } from '../calculations.js';
 import { StorageManager } from '../storage.js';
 import { esc, parseAmount, thousands } from '../utils.js';
 
@@ -68,12 +68,122 @@ export function renderGoalsView(containerEl, refreshApp) {
                value="${acc ? thousands(Number(acc.openingBalance) || 0) : ''}" />
         <p class="card-desc">이 계좌를 가계부에 등록하는 시점의 잔액입니다. 이후 잔액은 거래 내역으로 자동 계산됩니다.</p>
       </div>
+
+      <!-- 카드 전용: 청구 주기 -->
+      <div id="acc-card-fields" style="display: ${acc && acc.type === 'card' ? 'block' : 'none'}">
+        <div class="card-cycle-box">
+          <label class="form-label">💳 카드 결제 주기</label>
+          <p class="card-desc">
+            결제일이 지나면 <strong>결제 통장 → 카드</strong> 이체 거래가 자동으로 만들어집니다.
+            나중에 카드 사용 내역을 더 입력하면 금액이 자동으로 보정됩니다.
+          </p>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">사용 기간 마감일 (결산일)</label>
+              <select id="acc-statement-day" class="form-select">
+                <option value="31" ${!acc || Number(acc.statementDay) === 31 ? 'selected' : ''}>매월 말일</option>
+                ${[13, 14, 15, 16, 17, 18, 19, 20].map(d => `
+                  <option value="${d}" ${acc && Number(acc.statementDay) === d ? 'selected' : ''}>${d}일</option>
+                `).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">결제일</label>
+              <select id="acc-payment-day" class="form-select">
+                ${[1, 5, 10, 12, 13, 14, 15, 20, 21, 23, 25, 26, 27].map(d => `
+                  <option value="${d}" ${acc && Number(acc.paymentDay) === d ? 'selected' : (!acc && d === 25 ? 'selected' : '')}>${d}일</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">결제 시점</label>
+              <select id="acc-payment-offset" class="form-select">
+                <option value="1" ${!acc || acc.paymentMonthOffset !== 0 ? 'selected' : ''}>사용 기간의 다음 달에 결제</option>
+                <option value="0" ${acc && acc.paymentMonthOffset === 0 ? 'selected' : ''}>사용 기간과 같은 달에 결제</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">결제 통장</label>
+              <select id="acc-payment-account" class="form-select">
+                <option value="">선택 안 함 (자동 생성 끔)</option>
+                ${accounts.filter(a => a.type !== 'card' && (!acc || a.id !== acc.id)).map(a => `
+                  <option value="${esc(a.id)}" ${acc && acc.paymentAccountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+
+          <label class="check-row">
+            <input type="checkbox" id="acc-auto-settle" ${!acc || acc.autoSettle !== false ? 'checked' : ''} />
+            <span>결제일이 지나면 결제 거래를 자동으로 만들기</span>
+          </label>
+        </div>
+      </div>
       <div class="form-actions">
         <button class="btn-secondary-sm" id="acc-cancel">취소</button>
         <button class="btn-primary-sm" id="acc-save">${acc ? '수정 저장' : '계좌 추가'}</button>
       </div>
     </div>
   `;
+
+  function renderCardCycleInfo(card) {
+    if (!card.paymentAccountId || card.autoSettle === false) {
+      return `<div class="acc-cycle-note muted">
+        결제 주기 미설정 — 수정에서 결제일과 결제 통장을 지정하면 결제 거래가 자동 생성됩니다.
+      </div>`;
+    }
+
+    const upcoming = getUpcomingCardPayment(card, transactions);
+    const accruing = getAccruingCardCycle(card, transactions);
+    const payAcc = accounts.find(a => a.id === card.paymentAccountId);
+    const md = (d) => esc(String(d).slice(5).replace('-', '/'));
+
+    // 다음 결제일과 "지금 쌓이는 중"인 청구분이 다른 주기일 수 있습니다.
+    const sameCycle = upcoming.paymentDate === accruing.paymentDate;
+
+    const rows = [];
+
+    // 다음 결제일 (금액이 0이면 굳이 강조하지 않습니다)
+    if (upcoming.amount > 0 || sameCycle) {
+      rows.push(`
+        <div class="cycle-row">
+          <span class="cycle-label">📅 다음 결제 ${md(upcoming.paymentDate)}</span>
+          <strong>${formatCurrency(upcoming.amount)}</strong>
+        </div>
+        <div class="acc-cycle-sub">${md(upcoming.periodStart)}~${md(upcoming.periodEnd)} 사용분</div>
+      `);
+    } else {
+      rows.push(`
+        <div class="cycle-row">
+          <span class="cycle-label">📅 다음 결제 ${md(upcoming.paymentDate)}</span>
+          <strong class="text-muted">결제할 금액 없음</strong>
+        </div>
+      `);
+    }
+
+    if (!sameCycle) {
+      rows.push(`
+        <div class="cycle-row cycle-accruing">
+          <span class="cycle-label">🧾 이번에 쌓이는 중</span>
+          <strong>${formatCurrency(accruing.amount)}</strong>
+        </div>
+        <div class="acc-cycle-sub">
+          ${md(accruing.periodStart)}~${md(accruing.periodEnd)} 사용분 → <strong>${md(accruing.paymentDate)}</strong> 결제 예정
+        </div>
+      `);
+    }
+
+    return `
+      <div class="acc-cycle-note">
+        ${rows.join('')}
+        ${payAcc ? `<div class="acc-cycle-sub">${esc(payAcc.name)}에서 자동 출금</div>` : ''}
+      </div>
+    `;
+  }
 
   function render(editingAccountId = null, showForm = false) {
     const editing = editingAccountId ? accounts.find(a => a.id === editingAccountId) : null;
@@ -120,6 +230,7 @@ export function renderGoalsView(containerEl, refreshApp) {
                     · 거래 ${acc.txCount}건
                     ${isCard ? '<span class="badge badge-variable">카드</span>' : ''}
                   </div>
+                  ${isCard ? renderCardCycleInfo(acc) : ''}
                   <div class="acc-actions">
                     <button class="btn-icon btn-edit-acc" data-id="${esc(acc.id)}" title="수정">✏️</button>
                     <button class="btn-icon btn-del-acc" data-id="${esc(acc.id)}" title="삭제">🗑️</button>
@@ -233,19 +344,40 @@ export function renderGoalsView(containerEl, refreshApp) {
 
     if (showForm) {
       const form = containerEl.querySelector('#account-form');
+
+      // 종류를 카드로 바꾸면 결제 주기 입력을 보여줍니다
+      const typeSel = form.querySelector('#acc-type');
+      const cardFields = form.querySelector('#acc-card-fields');
+      typeSel.addEventListener('change', () => {
+        cardFields.style.display = typeSel.value === 'card' ? 'block' : 'none';
+      });
+
       form.querySelector('#acc-cancel').addEventListener('click', () => render(null, false));
       form.querySelector('#acc-save').addEventListener('click', async () => {
         const name = form.querySelector('#acc-name').value.trim();
         if (!name) { alert('계좌 이름을 입력해주세요.'); return; }
 
         const opening = parseAmount(form.querySelector('#acc-opening').value) ?? 0;
+        const type = form.querySelector('#acc-type').value;
+
         const payload = {
           name,
           bankName: form.querySelector('#acc-bank').value.trim(),
-          type: form.querySelector('#acc-type').value,
+          type,
           owner: form.querySelector('#acc-owner').value,
           openingBalance: opening
         };
+
+        if (type === 'card') {
+          payload.statementDay = Number(form.querySelector('#acc-statement-day').value) || 31;
+          payload.paymentDay = Number(form.querySelector('#acc-payment-day').value) || 25;
+          payload.paymentMonthOffset = Number(form.querySelector('#acc-payment-offset').value) === 0 ? 0 : 1;
+          payload.paymentAccountId = form.querySelector('#acc-payment-account').value;
+          payload.autoSettle = form.querySelector('#acc-auto-settle').checked && !!payload.paymentAccountId;
+        } else {
+          payload.paymentAccountId = '';
+          payload.autoSettle = false;
+        }
 
         const list = StorageManager.getAccounts();
         if (editingAccountId) {

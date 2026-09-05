@@ -61,7 +61,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     const userBd = calculateUserBreakdown(transactions, currentMonthStr);
     const pace = calculateSpendingPace(transactions, currentMonthStr);
     const mom = calculateMonthOverMonth(transactions, currentMonthStr);
-    const settings = StorageManager.getSettings();
+    const settings = StorageManager.getSharedSettings();
     const settlement = calculateSettlement(transactions, currentMonthStr, settings.settlementMode);
 
     const monthTx = filterTransactionsByMonth(transactions, currentMonthStr).filter(t => t.type === 'expense');

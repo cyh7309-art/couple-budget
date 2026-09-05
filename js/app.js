@@ -28,10 +28,9 @@ class CoupleFinanceApp {
 
     StorageManager.init();
 
-    // 테마 적용 (첫 페인트 전에)
-    const settings = StorageManager.getSettings();
-    applyTheme(settings.theme);
-    watchSystemTheme(() => StorageManager.getSettings().theme);
+    // 테마 적용 (첫 페인트 전에) — 테마는 기기별 설정입니다
+    applyTheme(StorageManager.getDeviceSettings().theme);
+    watchSystemTheme(() => StorageManager.getDeviceSettings().theme);
 
     this.initDOM();
     this.initModal();
@@ -42,16 +41,31 @@ class CoupleFinanceApp {
     this.initRealtimeSync();
   }
 
-  /** 이번 달 반복 거래(고정비)를 자동 생성합니다. 이미 생성됐으면 아무 일도 하지 않습니다. */
+  /**
+   * 이번 달 자동 처리:
+   *  1) 금액이 고정된 반복 거래 생성
+   *  2) 결제일이 지난 카드 청구분에 대해 '통장 → 카드' 결제 이체 생성/보정
+   * 둘 다 멱등이라 여러 번 실행해도 안전합니다.
+   */
   async initRecurring() {
+    const month = currentMonthLocalStr();
     try {
-      const created = await StorageManager.applyRecurring(currentMonthLocalStr());
-      if (created.length > 0) {
-        console.log(`[반복거래] ${created.length}건 자동 생성`);
-        this.requestRender();
+      const created = await StorageManager.applyRecurring(month);
+      if (created.length > 0) console.log(`[반복거래] ${created.length}건 자동 생성`);
+
+      // 카드 결제는 이번 달 + 지난달까지 확인합니다.
+      // (월초에 접속하면 지난달 결제 건이 아직 안 만들어졌을 수 있습니다)
+      const cardResults = [];
+      for (const m of [getPreviousMonthStr(month), month]) {
+        cardResults.push(await StorageManager.applyCardSettlements(m));
       }
+      const cardChanges = cardResults.reduce(
+        (n, r) => n + r.created.length + r.updated.length + r.removed.length, 0);
+      if (cardChanges > 0) console.log(`[카드결제] ${cardChanges}건 생성/보정`);
+
+      if (created.length > 0 || cardChanges > 0) this.requestRender();
     } catch (e) {
-      console.warn('반복 거래 생성 실패:', e);
+      console.warn('자동 거래 생성 실패:', e);
     }
   }
 
@@ -269,7 +283,7 @@ class CoupleFinanceApp {
     this.updateHeaderAndSidebar();
 
     if (this.activeTab === 'dashboard') {
-      renderDashboardView(this.viewContainer, this.currentMonthStr, (tab) => this.switchTab(tab));
+      renderDashboardView(this.viewContainer, this.currentMonthStr, (tab) => this.switchTab(tab), () => this.render());
     } else if (this.activeTab === 'transactions') {
       renderTransactionsView(
         this.viewContainer,

@@ -3,7 +3,7 @@
  * Couple Finance Dashboard ("우리집 가계부")
  */
 
-import { todayLocalStr } from './utils.js';
+import { todayLocalStr, toLocalDateStr } from './utils.js';
 
 /**
  * 해당 월의 "진행 상황"을 계산합니다.
@@ -616,5 +616,248 @@ export function calculateAccountBalances(accounts, transactions) {
     unassignedExpense,
     unassignedIncome,
     hasUnassigned: unassignedExpense > 0 || unassignedIncome > 0
+  };
+}
+
+/* ==========================================================================
+   카드 청구 주기 (결산일 → 결제일)
+   ========================================================================== */
+
+/** 해당 연/월에서 day 를 유효한 날짜로 보정 (31일 지정 + 2월 → 28/29일) */
+function clampDate(year, month1, day) {
+  const daysInMonth = new Date(year, month1, 0).getDate();
+  const d = Math.min(Math.max(Number(day) || 1, 1), daysInMonth);
+  return `${year}-${String(month1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function addDays(dateStr, delta) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  return toLocalDateStr(d);
+}
+
+function shiftMonth(monthStr, delta) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * 카드의 청구 주기를 계산합니다.
+ *
+ * 한국 카드사는 크게 두 가지 형태입니다.
+ *   ① 1일~말일 사용분을 다음 달 25일 결제  → statementDay 31, paymentMonthOffset 1, paymentDay 25
+ *   ② 전월 14일~당월 13일 사용분을 당월 27일 결제 → statementDay 13, paymentMonthOffset 0, paymentDay 27
+ *
+ * @param paymentMonthStr 결제가 일어나는 달 'YYYY-MM'
+ * @returns { periodStart, periodEnd, paymentDate } 모두 'YYYY-MM-DD'
+ */
+export function getCardBillingCycle(card, paymentMonthStr) {
+  const statementDay = Number(card.statementDay) || 31;
+  const paymentDay = Number(card.paymentDay) || 25;
+  const offset = card.paymentMonthOffset === 0 ? 0 : 1;
+
+  const [py, pm] = paymentMonthStr.split('-').map(Number);
+  const paymentDate = clampDate(py, pm, paymentDay);
+
+  const statementMonth = shiftMonth(paymentMonthStr, -offset);
+  const [sy, sm] = statementMonth.split('-').map(Number);
+  const periodEnd = clampDate(sy, sm, statementDay);
+
+  const prevMonth = shiftMonth(statementMonth, -1);
+  const [vy, vm] = prevMonth.split('-').map(Number);
+  const periodStart = addDays(clampDate(vy, vm, statementDay), 1);
+
+  return { periodStart, periodEnd, paymentDate, statementMonth };
+}
+
+/**
+ * 해당 결제월에 빠져나갈 카드 사용액을 집계합니다.
+ * (카드 결제 이체 자체는 type 'transfer' 이므로 사용액에 포함되지 않습니다)
+ */
+export function calculateCardBilling(card, transactions, paymentMonthStr) {
+  const cycle = getCardBillingCycle(card, paymentMonthStr);
+
+  let amount = 0;
+  let txCount = 0;
+  transactions.forEach(t => {
+    if (t.type !== 'expense') return;
+    if (t.accountId !== card.id) return;
+    const d = String(t.date || '');
+    if (d < cycle.periodStart || d > cycle.periodEnd) return;
+    amount += Number(t.amount || 0);
+    txCount += 1;
+  });
+
+  return { ...cycle, cardId: card.id, amount, txCount };
+}
+
+/**
+ * 오늘 기준 "다음 결제 예정"을 반환합니다.
+ * 이번 달 결제일이 이미 지났으면 다음 달 건을 돌려줍니다.
+ */
+export function getUpcomingCardPayment(card, transactions, todayStr) {
+  const today = todayStr || todayLocalStr();
+  const thisMonth = today.slice(0, 7);
+
+  const current = calculateCardBilling(card, transactions, thisMonth);
+  if (current.paymentDate >= today) return current;
+
+  return calculateCardBilling(card, transactions, shiftMonth(thisMonth, 1));
+}
+
+/**
+ * 지금 "쌓이는 중"인 청구분을 반환합니다.
+ * 즉, 오늘 긁은 카드값이 언제 얼마로 빠져나갈지에 해당하는 주기입니다.
+ *
+ * 다음 결제일과 다를 수 있습니다. 예를 들어 9월 4일에 '말일 마감 / 다음 달 25일 결제' 카드라면
+ *  - 다음 결제일   = 9/25 (8월 사용분)
+ *  - 쌓이는 중     = 9/1~9/30 사용분, 10/25 결제
+ * 사용자가 실제로 궁금한 쪽은 후자입니다.
+ */
+export function getAccruingCardCycle(card, transactions, todayStr) {
+  const today = todayStr || todayLocalStr();
+  const thisMonth = today.slice(0, 7);
+
+  for (const offset of [0, 1, -1]) {
+    const billing = calculateCardBilling(card, transactions, shiftMonth(thisMonth, offset));
+    if (today >= billing.periodStart && today <= billing.periodEnd) return billing;
+  }
+  // 안전망: 못 찾으면 다음 결제 건을 돌려줍니다
+  return getUpcomingCardPayment(card, transactions, today);
+}
+
+/* ==========================================================================
+   할부 (Installment)
+   ==========================================================================
+   회계 방식: 구매 금액을 구매한 달에 통째로 잡지 않고 회차별로 나눠 기록합니다.
+   가계부의 월 예산·부부 정산·카드 결제액이 모두 "그 달에 실제로 빠져나가는 돈"
+   기준이기 때문입니다. 120만원 12개월 할부를 구매월에 통째로 잡으면
+   그 달 예산이 터지고 정산 금액도 실제와 달라집니다.
+
+   수수료 계산은 국내 카드사 방식(원금 균등 + 잔액 기준 수수료)을 따릅니다.
+     회차 원금  = 할부원금 / 개월수   (나머지 원 단위는 1회차에 몰아줌)
+     회차 수수료 = 남은 원금 × (연이율 / 12)
+   ========================================================================== */
+
+/** 구매일에서 n개월 뒤 (말일 자동 보정: 1/31 + 1개월 → 2/28) */
+export function addMonthsClamped(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(y, m - 1 + n, 1);
+  return clampDate(target.getFullYear(), target.getMonth() + 1, d);
+}
+
+/**
+ * 할부 상환 스케줄을 만듭니다.
+ * @param totalAmount 할부 원금(구매 금액)
+ * @param months      할부 개월 수 (2 이상)
+ * @param startDate   구매일 'YYYY-MM-DD' — 1회차가 이 날짜에 청구됩니다
+ * @param annualRate  연 수수료율 % (0 이면 무이자)
+ */
+export function buildInstallmentSchedule(totalAmount, months, startDate, annualRate = 0) {
+  const principal = Math.round(Number(totalAmount) || 0);
+  const n = Math.max(2, Math.round(Number(months) || 2));
+  const rate = Math.max(0, Number(annualRate) || 0) / 100 / 12;
+
+  const basePrincipal = Math.floor(principal / n);
+  const remainder = principal - basePrincipal * n; // 나머지 원 단위
+
+  const rows = [];
+  let outstanding = principal;
+
+  for (let seq = 1; seq <= n; seq++) {
+    // 나머지는 1회차에 얹습니다 (카드사 관행)
+    const principalPart = seq === 1 ? basePrincipal + remainder : basePrincipal;
+    const feePart = rate > 0 ? Math.round(outstanding * rate) : 0;
+
+    rows.push({
+      seq,
+      date: addMonthsClamped(startDate, seq - 1),
+      principal: principalPart,
+      fee: feePart,
+      amount: principalPart + feePart,
+      outstandingBefore: outstanding,
+      outstandingAfter: outstanding - principalPart
+    });
+
+    outstanding -= principalPart;
+  }
+
+  const totalFee = rows.reduce((s, r) => s + r.fee, 0);
+  return {
+    months: n,
+    principal,
+    annualRate: Number(annualRate) || 0,
+    totalFee,
+    totalPayment: principal + totalFee,
+    monthlyAmount: rows[0].amount, // 1회차 기준 (안내용)
+    rows
+  };
+}
+
+/**
+ * 거래 목록에서 할부 건들을 모아 현황을 계산합니다.
+ * @param monthStr 기준 월 — 이 달에 나갈 할부금 합계를 함께 돌려줍니다
+ */
+export function calculateInstallments(transactions, monthStr, todayStr) {
+  const today = todayStr || todayLocalStr();
+  const groups = new Map();
+
+  transactions.forEach(t => {
+    if (!t.installmentId) return;
+    if (!groups.has(t.installmentId)) groups.set(t.installmentId, []);
+    groups.get(t.installmentId).push(t);
+  });
+
+  const plans = [];
+  let monthlyBurden = 0;
+  let remainingTotal = 0;
+
+  groups.forEach((rows, id) => {
+    rows.sort((a, b) => (Number(a.installmentSeq) || 0) - (Number(b.installmentSeq) || 0));
+    const first = rows[0];
+    const months = Number(first.installmentMonths) || rows.length;
+
+    const paidRows = rows.filter(r => String(r.date) <= today);
+    const remainingRows = rows.filter(r => String(r.date) > today);
+
+    const thisMonthRows = rows.filter(r => String(r.date).startsWith(monthStr));
+    const thisMonthAmount = thisMonthRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    monthlyBurden += thisMonthAmount;
+
+    const remainingAmount = remainingRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    remainingTotal += remainingAmount;
+
+    plans.push({
+      installmentId: id,
+      name: first.memo || '할부 결제',
+      months,
+      paidCount: paidRows.length,
+      remainingCount: remainingRows.length,
+      totalAmount: rows.reduce((s, r) => s + Number(r.amount || 0), 0),
+      principal: Number(first.installmentPrincipal) || rows.reduce((s, r) => s + Number(r.amount || 0), 0),
+      remainingAmount,
+      thisMonthAmount,
+      accountId: first.accountId || '',
+      categoryId: first.categoryId || '',
+      userId: first.userId || 'husband',
+      sharedType: first.sharedType || 'shared',
+      startDate: rows[0].date,
+      endDate: rows[rows.length - 1].date,
+      isActive: remainingRows.length > 0,
+      rows
+    });
+  });
+
+  plans.sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    return String(a.endDate).localeCompare(String(b.endDate));
+  });
+
+  return {
+    plans,
+    activePlans: plans.filter(p => p.isActive),
+    monthlyBurden,
+    remainingTotal
   };
 }

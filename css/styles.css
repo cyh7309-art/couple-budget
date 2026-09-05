@@ -1779,3 +1779,303 @@ button:disabled {
   .rec-right { width: 100%; justify-content: space-between; }
   .settle-row { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   카드 결제 주기 / 변동 반복 확인 / 정산 이력
+   ========================================================================== */
+
+/* 체크박스 한 줄 */
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-body);
+  line-height: 1.5;
+}
+
+.check-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/* 카드 결제 주기 입력 묶음 */
+.card-cycle-box {
+  margin-top: 0.5rem;
+  padding: 0.9rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-3);
+}
+
+/* 계좌 카드의 다음 결제 안내 */
+.acc-cycle-note {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--badge-sky-bg);
+  color: var(--badge-sky-fg);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.acc-cycle-note.muted {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+.acc-cycle-sub {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+/* 변동 반복 거래 확인 카드 */
+.pending-card {
+  border-left: 4px solid var(--color-warning);
+}
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-2);
+}
+
+.pending-info strong { color: var(--text-main); }
+
+.pending-meta {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.pending-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pending-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pending-input-group .form-input {
+  width: 120px;
+  text-align: right;
+}
+
+/* 정산 이력 / 완료 표시 */
+.settle-done-btn { margin-top: 0.75rem; }
+
+.settle-meta {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.settle-drift {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--badge-amber-bg);
+  color: var(--badge-amber-fg);
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+
+.settle-drift button { margin-top: 0.5rem; }
+
+.settle-undo {
+  display: block;
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.settle-history {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.settle-history-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.settle-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  font-size: 0.82rem;
+  color: var(--text-body);
+}
+
+.rec-approx {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-light);
+  margin-left: 0.15rem;
+}
+
+@media (max-width: 768px) {
+  .pending-item { flex-direction: column; align-items: stretch; }
+  .pending-actions { justify-content: space-between; }
+  .pending-input-group .form-input { width: 100%; }
+}
+
+/* 카드 청구 주기 안내 행 */
+.cycle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.cycle-row .cycle-label { font-weight: 600; }
+
+.cycle-row.cycle-accruing {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid currentColor;
+  border-image: none;
+  opacity: 0.95;
+}
+
+/* ==========================================================================
+   할부 (Installment)
+   ========================================================================== */
+
+.badge-installment {
+  background: var(--badge-pink-bg);
+  color: var(--badge-pink-fg);
+}
+
+/* 입력 모달의 수수료율 필드 */
+.rate-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rate-field .form-input { flex: 1; min-width: 0; text-align: right; }
+
+/* 할부 미리보기 */
+.installment-preview {
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--badge-pink-bg);
+  color: var(--badge-pink-fg);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  min-height: 0;
+}
+
+.installment-preview:empty { display: none; }
+
+.inst-preview-main { font-size: 0.95rem; }
+.inst-preview-sub {
+  margin-top: 0.25rem;
+  font-size: 0.76rem;
+  opacity: 0.9;
+}
+
+/* 대시보드 할부 카드 */
+.installment-card { border-left: 4px solid #ec4899; }
+
+.inst-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.inst-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-3);
+}
+
+.inst-summary-item span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.inst-summary-item strong { font-size: 1.05rem; }
+
+.inst-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.inst-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.inst-name {
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inst-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.inst-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .inst-summary { grid-template-columns: 1fr; }
+}

@@ -5,6 +5,7 @@
 
 import { StorageManager } from '../storage.js';
 import { esc, todayLocalStr, parseAmount, thousands } from '../utils.js';
+import { buildInstallmentSchedule, formatCurrency } from '../calculations.js';
 
 export class TransactionModal {
   constructor(modalOverlayEl, onSaveSuccess) {
@@ -49,6 +50,12 @@ export class TransactionModal {
     this.btnFixedToggle = this.modalEl.querySelector('#modal-btn-fixed');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
     this.categoryGroup = this.categoryGrid ? this.categoryGrid.closest('.form-group') : null;
+
+    this.installmentGroup = this.modalEl.querySelector('#modal-group-installment');
+    this.installmentSelect = this.modalEl.querySelector('#modal-select-installment');
+    this.rateField = this.modalEl.querySelector('#modal-rate-field');
+    this.rateInput = this.modalEl.querySelector('#modal-input-rate');
+    this.installmentPreview = this.modalEl.querySelector('#modal-installment-preview');
 
     this.btnClose = this.modalEl.querySelector('#modal-btn-close');
     this.btnCancel = this.modalEl.querySelector('#modal-btn-cancel');
@@ -100,9 +107,22 @@ export class TransactionModal {
 
     this.btnSave.addEventListener('click', () => this.save());
 
-    // 금액 입력 시 천단위 미리보기
+    // 금액 입력 시 천단위 미리보기 + 할부 미리보기
     if (this.inputAmount) {
-      this.inputAmount.addEventListener('input', () => this.updateAmountHint());
+      this.inputAmount.addEventListener('input', () => {
+        this.updateAmountHint();
+        this.updateInstallmentPreview();
+      });
+    }
+
+    if (this.installmentSelect) {
+      this.installmentSelect.addEventListener('change', () => this.updateInstallmentPreview());
+    }
+    if (this.rateInput) {
+      this.rateInput.addEventListener('input', () => this.updateInstallmentPreview());
+    }
+    if (this.inputDate) {
+      this.inputDate.addEventListener('change', () => this.updateInstallmentPreview());
     }
 
     // ESC 닫기 / Enter 저장 / Tab 포커스 트랩 (모달이 열려 있을 때만)
@@ -174,6 +194,57 @@ export class TransactionModal {
     }
   }
 
+  /** 현재 선택된 할부 개월 수 (0 = 일시불) */
+  getInstallmentMonths() {
+    if (!this.installmentSelect) return 0;
+    if (this.selectedType !== 'expense') return 0;
+    return Number(this.installmentSelect.value) || 0;
+  }
+
+  updateInstallmentPreview() {
+    if (!this.installmentPreview) return;
+
+    const months = this.getInstallmentMonths();
+    const isInstallment = months >= 2;
+
+    if (this.rateField) this.rateField.style.display = isInstallment ? 'flex' : 'none';
+
+    if (!isInstallment) {
+      this.installmentPreview.innerHTML = '';
+      return;
+    }
+
+    const amount = parseAmount(this.inputAmount.value);
+    if (!amount || amount <= 0) {
+      this.installmentPreview.innerHTML =
+        '<span class="text-muted">구매 금액을 입력하면 회차별 납입액을 보여드립니다.</span>';
+      return;
+    }
+
+    const rate = Number(parseAmount(this.rateInput ? this.rateInput.value : '0')) || 0;
+    const startDate = this.inputDate.value || todayLocalStr();
+    const schedule = buildInstallmentSchedule(amount, months, startDate, rate);
+
+    const last = schedule.rows[schedule.rows.length - 1];
+    const sameEveryMonth = schedule.rows.every(r => r.amount === schedule.rows[0].amount);
+
+    this.installmentPreview.innerHTML = `
+      <div class="inst-preview-main">
+        ${sameEveryMonth
+          ? `매월 <strong>${formatCurrency(schedule.rows[0].amount)}</strong> × ${months}회`
+          : `1회차 <strong>${formatCurrency(schedule.rows[0].amount)}</strong>
+             → 마지막 ${formatCurrency(last.amount)} (${months}회)`}
+      </div>
+      <div class="inst-preview-sub">
+        원금 ${formatCurrency(schedule.principal)}
+        ${schedule.totalFee > 0
+          ? ` + 수수료 ${formatCurrency(schedule.totalFee)} = <strong>${formatCurrency(schedule.totalPayment)}</strong>`
+          : ' · 무이자'}
+        <br>${esc(schedule.rows[0].date)} ~ ${esc(last.date)} 동안 ${months}건의 거래로 나뉘어 기록됩니다.
+      </div>
+    `;
+  }
+
   isOpen() {
     return this.modalEl.classList.contains('open');
   }
@@ -203,6 +274,7 @@ export class TransactionModal {
 
     if (editingTxId) {
       const tx = StorageManager.getTransactions().find(t => t.id === editingTxId);
+      this.currentEditingTx = tx || null;
       if (tx) {
         this.modalTitle.textContent = '✏️ 거래 정보 수정';
         this.selectedType = tx.type || 'expense';
@@ -220,6 +292,7 @@ export class TransactionModal {
         this.inputMemo.value = tx.memo || '';
       }
     } else {
+      this.currentEditingTx = null;
       this.modalTitle.textContent = '⚡ 빠른 거래 등록';
       this.selectedType = 'expense';
       this.selectedUserId = 'husband';
@@ -241,6 +314,11 @@ export class TransactionModal {
     // ✅ select 의 실제 DOM 값을 반드시 동기화 (미설정 시 항상 '카드'로 저장되던 버그)
     if (this.paymentMethodSelect) this.paymentMethodSelect.value = paymentMethod;
     this.renderAccountOptions(accountId, fromAccountId, toAccountId);
+
+    // 할부는 신규 등록에서만 설정합니다 (기존 할부 회차 수정은 금액/메모만)
+    if (this.installmentSelect) this.installmentSelect.value = '0';
+    if (this.rateInput) this.rateInput.value = '0';
+    this.editingInstallment = editingTxId ? this.currentEditingTx : null;
 
     this.updateTypeTabs();
     this.updateUserButtons();
@@ -302,6 +380,14 @@ export class TransactionModal {
     // 이체는 단일 계좌 대신 출금/입금 계좌를 받습니다
     if (this.accountGroup) this.accountGroup.style.display = isTransfer ? 'none' : 'block';
     if (this.transferGroup) this.transferGroup.style.display = isTransfer ? 'block' : 'none';
+
+    // 할부는 지출에서만, 그리고 신규 등록에서만 가능합니다
+    if (this.installmentGroup) {
+      const canInstallment = this.selectedType === 'expense' && !this.editingId;
+      this.installmentGroup.style.display = canInstallment ? 'block' : 'none';
+      if (!canInstallment && this.installmentSelect) this.installmentSelect.value = '0';
+    }
+    this.updateInstallmentPreview();
   }
 
   updateUserButtons() {
@@ -428,8 +514,22 @@ export class TransactionModal {
     };
 
     try {
+      const months = this.getInstallmentMonths();
+
       if (this.editingId) {
         await StorageManager.updateTransaction(this.editingId, txData);
+      } else if (months >= 2) {
+        const rate = Number(parseAmount(this.rateInput ? this.rateInput.value : '0')) || 0;
+        const result = await StorageManager.addInstallment(txData, { months, annualRate: rate });
+        const sc = result.schedule;
+        alert(
+          `할부로 등록했습니다.\n\n` +
+          `${months}개월 · 회차당 ${sc.rows[0].amount.toLocaleString('ko-KR')}원\n` +
+          (sc.totalFee > 0
+            ? `원금 ${sc.principal.toLocaleString('ko-KR')}원 + 수수료 ${sc.totalFee.toLocaleString('ko-KR')}원 = ${sc.totalPayment.toLocaleString('ko-KR')}원\n`
+            : '무이자\n') +
+          `${sc.rows[0].date} ~ ${sc.rows[sc.rows.length - 1].date}`
+        );
       } else {
         await StorageManager.addTransaction(txData);
       }

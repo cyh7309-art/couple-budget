@@ -18,7 +18,8 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
     const budgets = StorageManager.getBudgets();
     const accounts = StorageManager.getAccounts();
     const recurring = StorageManager.getRecurring();
-    const settings = StorageManager.getSettings();
+    const deviceSettings = StorageManager.getDeviceSettings();
+    const sharedSettings = StorageManager.getSharedSettings();
 
     const husbandName = users.husband.name;
     const wifeName = users.wife.name;
@@ -74,30 +75,47 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
         </div>
       `}
 
-      <!-- 화면 & 정산 기준 -->
+      <!-- 화면 (기기별) -->
       <div class="card settings-card margin-top">
-        <h3 class="card-title">🎨 화면 및 정산 기준</h3>
-
-        <div class="setting-form-row">
-          <div class="form-group">
-            <label class="form-label">테마</label>
-            <select id="select-theme" class="form-select">
-              <option value="system" ${settings.theme === 'system' ? 'selected' : ''}>🖥️ 시스템 설정 따르기</option>
-              <option value="light" ${settings.theme === 'light' ? 'selected' : ''}>☀️ 라이트</option>
-              <option value="dark" ${settings.theme === 'dark' ? 'selected' : ''}>🌙 다크</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">부부 정산 기준</label>
-            <select id="select-settlement" class="form-select">
-              <option value="half" ${settings.settlementMode === 'half' ? 'selected' : ''}>반반 부담 (50:50)</option>
-              <option value="income" ${settings.settlementMode === 'income' ? 'selected' : ''}>수입 비율대로 부담</option>
-            </select>
-          </div>
+        <div class="card-title-row">
+          <h3 class="card-title">🎨 화면</h3>
+          <span class="badge badge-variable">📱 이 기기에만 적용</span>
         </div>
+
+        <div class="form-group">
+          <label class="form-label">테마</label>
+          <select id="select-theme" class="form-select">
+            <option value="system" ${deviceSettings.theme === 'system' ? 'selected' : ''}>🖥️ 시스템 설정 따르기</option>
+            <option value="light" ${deviceSettings.theme === 'light' ? 'selected' : ''}>☀️ 라이트</option>
+            <option value="dark" ${deviceSettings.theme === 'dark' ? 'selected' : ''}>🌙 다크</option>
+          </select>
+        </div>
+        <p class="card-desc">테마는 기기마다 다르게 쓰는 게 자연스러워서 이 기기에만 저장됩니다.</p>
+      </div>
+
+      <!-- 부부 공유 설정 -->
+      <div class="card settings-card margin-top">
+        <div class="card-title-row">
+          <h3 class="card-title">👫 부부 공유 설정</h3>
+          <span class="badge badge-shared">☁️ 두 기기 모두 적용</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">정산 기준</label>
+          <select id="select-settlement" class="form-select">
+            <option value="half" ${sharedSettings.settlementMode === 'half' ? 'selected' : ''}>반반 부담 (50:50)</option>
+            <option value="income" ${sharedSettings.settlementMode === 'income' ? 'selected' : ''}>수입 비율대로 부담</option>
+          </select>
+          <p class="card-desc">공동생활비를 누가 얼마나 부담해야 하는지 계산하는 기준입니다.</p>
+        </div>
+
+        <label class="check-row margin-top-sm">
+          <input type="checkbox" id="check-card-settle" ${sharedSettings.cardSettlementEnabled !== false ? 'checked' : ''} />
+          <span>카드 결제일이 지나면 <strong>결제 통장 → 카드</strong> 이체를 자동으로 만들기</span>
+        </label>
         <p class="card-desc">
-          정산 기준은 공동생활비를 누가 얼마나 부담해야 하는지 계산할 때 쓰입니다.
-          이 두 설정은 <strong>기기별</strong>로 저장됩니다.
+          카드별 결제일·결제 통장은 <strong>[목표/계좌]</strong> 탭에서 카드를 수정해 설정합니다.
+          이 항목을 끄면 모든 카드의 자동 생성이 멈춥니다.
         </p>
       </div>
 
@@ -153,6 +171,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
                       <span class="badge ${r.type === 'income' ? 'badge-income' : 'badge-expense'}">
                         ${r.type === 'income' ? '수입' : '지출'}
                       </span>
+                      ${r.amountMode === 'variable' ? '<span class="badge badge-caution">📝 변동</span>' : ''}
                       ${inactive ? '<span class="badge badge-variable">일시중지</span>' : ''}
                     </div>
                     <div class="rec-meta">
@@ -163,7 +182,9 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
                     </div>
                   </div>
                   <div class="rec-right">
-                    <strong class="rec-amount">${formatCurrency(r.amount)}</strong>
+                    <strong class="rec-amount">
+                      ${formatCurrency(r.amount)}${r.amountMode === 'variable' ? '<span class="rec-approx">쯤</span>' : ''}
+                    </strong>
                     <div class="rec-actions">
                       <button class="btn-icon btn-toggle-rec" data-id="${esc(r.id)}" title="${inactive ? '재개' : '일시중지'}">${inactive ? '▶️' : '⏸️'}</button>
                       <button class="btn-icon btn-edit-rec" data-id="${esc(r.id)}" title="수정">✏️</button>
@@ -176,6 +197,9 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           </div>
           <button class="btn-secondary-sm margin-top-sm" id="btn-run-recurring">
             ▶️ ${esc(currentMonthStr)} 반복 거래 지금 생성
+          </button>
+          <button class="btn-secondary-sm margin-top-sm" id="btn-run-card">
+            💳 ${esc(currentMonthStr)} 카드 결제 거래 갱신
           </button>
         `}
       </div>
@@ -288,6 +312,22 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           </div>
         </div>
 
+        <div class="form-group">
+          <label class="form-label">금액 유형</label>
+          <select id="rec-amount-mode" class="form-select">
+            <option value="fixed" ${!rec || rec.amountMode !== 'variable' ? 'selected' : ''}>
+              고정 — 매달 같은 금액, 자동 생성
+            </option>
+            <option value="variable" ${rec && rec.amountMode === 'variable' ? 'selected' : ''}>
+              변동 — 매달 금액이 다름, 확인 후 입력
+            </option>
+          </select>
+          <p class="card-desc">
+            <strong>변동</strong>으로 두면 자동 생성하지 않고, 매달 홈 화면에 "금액 확인 필요"로 올라옵니다.
+            지난달 금액이 미리 채워지므로 숫자만 고쳐서 확정하면 됩니다. (관리비·전기요금 등)
+          </p>
+        </div>
+
         <div class="form-row-2">
           <div class="form-group">
             <label class="form-label">유형</label>
@@ -369,14 +409,20 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       showLoginGate({ onSuccess: () => window.location.reload(), onSkip: () => refreshApp() });
     });
 
-    /* --- 테마 / 정산 기준 --- */
+    /* --- 테마 (기기별) --- */
     $('#select-theme').addEventListener('change', (e) => {
-      StorageManager.saveSettings({ theme: e.target.value });
+      StorageManager.saveDeviceSettings({ theme: e.target.value });
       applyTheme(e.target.value);
     });
 
-    $('#select-settlement').addEventListener('change', (e) => {
-      StorageManager.saveSettings({ settlementMode: e.target.value });
+    /* --- 공유 설정 (클라우드 동기화) --- */
+    $('#select-settlement').addEventListener('change', async (e) => {
+      await StorageManager.saveSharedSettings({ settlementMode: e.target.value });
+      refreshApp();
+    });
+
+    $('#check-card-settle').addEventListener('change', async (e) => {
+      await StorageManager.saveSharedSettings({ cardSettlementEnabled: e.target.checked });
       refreshApp();
     });
 
@@ -463,6 +509,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           userId: recForm.querySelector('#rec-user').value,
           sharedType: recForm.querySelector('#rec-shared').value,
           dayOfMonth: Math.min(Math.max(Number(recForm.querySelector('#rec-day').value) || 1, 1), 31),
+          amountMode: recForm.querySelector('#rec-amount-mode').value === 'variable' ? 'variable' : 'fixed',
           paymentMethod: 'bank',
           memo: name
         };
@@ -485,6 +532,20 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
         alert(created.length > 0
           ? `${currentMonthStr} 반복 거래 ${created.length}건을 생성했습니다.`
           : `${currentMonthStr} 에 새로 생성할 반복 거래가 없습니다. (이미 모두 생성되었습니다)`);
+        refreshApp();
+      });
+    }
+
+    const btnRunCard = $('#btn-run-card');
+    if (btnRunCard) {
+      btnRunCard.addEventListener('click', async () => {
+        btnRunCard.disabled = true;
+        const r = await StorageManager.applyCardSettlements(currentMonthStr);
+        btnRunCard.disabled = false;
+        const n = r.created.length + r.updated.length + r.removed.length;
+        alert(n === 0
+          ? '갱신할 카드 결제 거래가 없습니다.\n(결제일이 아직 안 지났거나, 카드에 결제일/결제 통장이 설정되지 않았습니다)'
+          : `카드 결제 거래를 갱신했습니다. 생성 ${r.created.length}건 · 금액 보정 ${r.updated.length}건 · 삭제 ${r.removed.length}건`);
         refreshApp();
       });
     }

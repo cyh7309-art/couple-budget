@@ -96,7 +96,8 @@ export class SupabaseSyncEngine {
     const sb = getSupabase();
     if (!sb) return null;
 
-    const tables = ['transactions', 'user_settings', 'budgets', 'goals', 'categories', 'accounts', 'recurring'];
+    const tables = ['transactions', 'user_settings', 'budgets', 'goals', 'categories',
+                    'accounts', 'recurring', 'settlements', 'app_settings'];
 
     try {
       let channel = sb.channel('couple-db-sync');
@@ -241,6 +242,37 @@ export class SupabaseSyncEngine {
 
   static async deleteAllRecurring() {
     return runWrite('deleteAllRecurring', s => s.from('recurring').delete().neq('id', '__never__'));
+  }
+
+  // --- Settlements (정산 이력) ---
+  static async fetchSettlements() {
+    return runRead('fetchSettlements', s => s.from('settlements').select('*').order('month', { ascending: false }));
+  }
+
+  static async saveSettlements(list) {
+    if (!list || list.length === 0) return true;
+    return runWrite('saveSettlements', s => s.from('settlements').upsert(list));
+  }
+
+  static async deleteSettlement(id) {
+    return runWrite('deleteSettlement', s => s.from('settlements').delete().eq('id', id));
+  }
+
+  static async deleteAllSettlements() {
+    return runWrite('deleteAllSettlements', s => s.from('settlements').delete().neq('id', '__never__'));
+  }
+
+  // --- App Settings (부부 공유 설정) ---
+  static async fetchAppSettings() {
+    const rows = await runRead('fetchAppSettings', s =>
+      s.from('app_settings').select('*').eq('id', 'household').limit(1));
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return rows[0].data || null;
+  }
+
+  static async saveAppSettings(data) {
+    return runWrite('saveAppSettings', s =>
+      s.from('app_settings').upsert([{ id: 'household', data }]));
   }
 
   // --- Categories ---

@@ -33,14 +33,25 @@ export const DEFAULT_CATEGORIES = [
 ];
 
 /**
- * 앱 설정 (기기별 저장)
- *  - settlementMode: 'half'(반반) | 'income'(수입 비율)
- *  - theme: 'system' | 'light' | 'dark'
+ * 기기별 설정 — 이 브라우저에만 저장됩니다.
+ *  - theme: 'system' | 'light' | 'dark'  (기기마다 다른 게 자연스러운 값)
  */
-export const DEFAULT_SETTINGS = {
-  settlementMode: 'half',
+export const DEFAULT_DEVICE_SETTINGS = {
   theme: 'system'
 };
+
+/**
+ * 부부 공유 설정 — 클라우드로 동기화되어 두 기기가 항상 같은 값을 봅니다.
+ *  - settlementMode: 'half'(반반) | 'income'(수입 비율)
+ *  - cardSettlementEnabled: 카드 결제 거래 자동 생성 여부
+ */
+export const DEFAULT_SHARED_SETTINGS = {
+  settlementMode: 'half',
+  cardSettlementEnabled: true
+};
+
+/** 하위 호환: 예전 코드가 참조하던 통합 기본값 */
+export const DEFAULT_SETTINGS = { ...DEFAULT_DEVICE_SETTINGS, ...DEFAULT_SHARED_SETTINGS };
 
 /**
  * 반복 거래 템플릿 (매월 자동 생성되는 고정비/고정수입)
@@ -49,6 +60,9 @@ export const DEFAULT_SETTINGS = {
  * 생성되는 거래의 id 는 `rtx_<템플릿id>_<YYYY-MM>` 로 고정되어 중복 생성되지 않습니다.
  */
 export const DEFAULT_RECURRING = [];
+
+/** 정산 이력 (부부가 "이번 달 정산 끝" 이라고 표시한 기록) */
+export const DEFAULT_SETTLEMENTS = [];
 
 /* --- 실사용 기본값: 전부 비어 있음 (가짜 숫자를 보여주지 않습니다) --- */
 export const DEFAULT_BUDGETS = [];
@@ -80,16 +94,20 @@ export const DEMO_ACCOUNTS = [
   { id: 'acc1', name: '공동 생활비 통장', type: 'bank', owner: 'shared', openingBalance: 4250000, bankName: '국민은행' },
   { id: 'acc2', name: '남편 월급 통장', type: 'bank', owner: 'husband', openingBalance: 1850000, bankName: '신한은행' },
   { id: 'acc3', name: '아내 월급 통장', type: 'bank', owner: 'wife', openingBalance: 2100000, bankName: '카카오뱅크' },
-  { id: 'card1', name: '공동 신용카드', type: 'card', owner: 'shared', openingBalance: 0, bankName: '현대카드' }
+  { id: 'card1', name: '공동 신용카드', type: 'card', owner: 'shared', openingBalance: 0, bankName: '현대카드',
+    statementDay: 31, paymentDay: 25, paymentMonthOffset: 1, paymentAccountId: 'acc1', autoSettle: true }
 ];
 
 export const DEMO_RECURRING = [
   { id: 'rec_rent', name: '아파트 관리비 & 월세', type: 'expense', amount: 800000, categoryId: 'cat_exp_living',
     userId: 'husband', sharedType: 'shared', paymentMethod: 'bank', accountId: 'acc1', dayOfMonth: 1,
-    isFixed: true, memo: '아파트 관리비 & 월세', active: true, startMonth: '2026-09' },
+    isFixed: true, memo: '아파트 관리비 & 월세', active: true, startMonth: '2026-09', amountMode: 'fixed' },
   { id: 'rec_insurance', name: '부부 통합 보험료', type: 'expense', amount: 450000, categoryId: 'cat_exp_finance',
     userId: 'wife', sharedType: 'shared', paymentMethod: 'bank', accountId: 'acc1', dayOfMonth: 1,
-    isFixed: true, memo: '부부 통합 실손/암보험료', active: true, startMonth: '2026-09' }
+    isFixed: true, memo: '부부 통합 실손/암보험료', active: true, startMonth: '2026-09', amountMode: 'fixed' },
+  { id: 'rec_utility', name: '아파트 관리비 (변동)', type: 'expense', amount: 180000, categoryId: 'cat_exp_living',
+    userId: 'husband', sharedType: 'shared', paymentMethod: 'bank', accountId: 'acc1', dayOfMonth: 25,
+    isFixed: true, memo: '아파트 관리비', active: true, startMonth: '2026-09', amountMode: 'variable' }
 ];
 
 export function generateDemoTransactions() {
@@ -108,6 +126,15 @@ export function generateDemoTransactions() {
     { id: 'tx_202609_exp8', date: '2026-09-04', type: 'expense', amount: 55000, userId: 'husband', categoryId: 'cat_exp_transport', sharedType: 'shared', paymentMethod: 'card', isFixed: false, memo: '주유소 기름 만탱크 주유', accountId: 'card1', createdAt: '2026-09-04T18:00:00.000Z' },
 
     { id: 'tx_202609_tr1', date: '2026-09-01', type: 'transfer', amount: 1500000, userId: 'husband', categoryId: '', sharedType: 'shared', paymentMethod: 'bank', isFixed: false, fromAccountId: 'acc2', toAccountId: 'acc1', memo: '남편 월급계좌 → 공동 생활비 통장 이체', createdAt: '2026-09-01T09:10:00.000Z' },
+
+
+    // 할부 예시: 60만원 6개월 무이자 (2026-07-20 구매) — 회차별로 나뉘어 기록됩니다
+    { id: 'inst_demo_01', date: '2026-07-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 1, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
+    { id: 'inst_demo_02', date: '2026-08-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 2, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
+    { id: 'inst_demo_03', date: '2026-09-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 3, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
+    { id: 'inst_demo_04', date: '2026-10-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 4, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
+    { id: 'inst_demo_05', date: '2026-11-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 5, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
+    { id: 'inst_demo_06', date: '2026-12-20', type: 'expense', amount: 100000, userId: 'husband', categoryId: 'cat_exp_growth', sharedType: 'husband', paymentMethod: 'card', accountId: 'card1', isFixed: true, memo: '노트북 구입 (6개월 무이자 할부)', installmentId: 'inst_demo', installmentSeq: 6, installmentMonths: 6, installmentPrincipal: 600000, installmentFee: 0, installmentRate: 0 },
 
     { id: 'h_08_inc', date: '2026-08-01', type: 'income', amount: 5800000, userId: 'husband', categoryId: 'cat_inc_salary', sharedType: 'shared', isFixed: true, memo: '8월 부부 급여 합산' },
     { id: 'h_08_exp1', date: '2026-08-10', type: 'expense', amount: 1650000, userId: 'husband', categoryId: 'cat_exp_living', sharedType: 'shared', isFixed: true, memo: '8월 고정비' },
@@ -133,7 +160,7 @@ export function generateDemoTransactions() {
 
 /** 과거 버전이 클라우드/로컬에 심어둔 샘플 데이터를 식별하기 위한 ID 접두사 */
 export const SAMPLE_ID_PREFIXES = ['tx_202609_', 'h_04_', 'h_05_', 'h_06_', 'h_07_', 'h_08_',
-  'rtx_rec_rent_', 'rtx_rec_insurance_'];
+  'rtx_rec_rent_', 'rtx_rec_insurance_', 'inst_demo_'];
 export const SAMPLE_BUDGET_IDS = DEMO_BUDGETS.map(b => b.id);
 export const SAMPLE_GOAL_IDS = DEMO_GOALS.map(g => g.id);
 

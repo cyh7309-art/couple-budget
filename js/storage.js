@@ -11,11 +11,13 @@
 
 import {
   DEFAULT_USERS, DEFAULT_CATEGORIES, DEFAULT_BUDGETS, DEFAULT_GOALS, DEFAULT_ACCOUNTS,
-  DEFAULT_SETTINGS, DEFAULT_RECURRING,
+  DEFAULT_DEVICE_SETTINGS, DEFAULT_SHARED_SETTINGS, DEFAULT_RECURRING, DEFAULT_SETTLEMENTS,
   DEMO_BUDGETS, DEMO_GOALS, DEMO_ACCOUNTS, DEMO_RECURRING, generateDemoTransactions,
   isSampleTransactionId, SAMPLE_BUDGET_IDS, SAMPLE_GOAL_IDS
 } from './models.js';
 import { SupabaseSyncEngine } from './supabaseClient.js';
+import { calculateCardBilling, buildInstallmentSchedule } from './calculations.js';
+import { todayLocalStr } from './utils.js';
 
 const STORAGE_KEYS = {
   USERS: 'couple_finance_users',
@@ -25,7 +27,9 @@ const STORAGE_KEYS = {
   GOALS: 'couple_finance_goals',
   ACCOUNTS: 'couple_finance_accounts',
   RECURRING: 'couple_finance_recurring',
-  SETTINGS: 'couple_finance_settings',
+  SETTLEMENTS: 'couple_finance_settlements',
+  SETTINGS: 'couple_finance_settings',              // 기기별 (테마 등)
+  SHARED_SETTINGS: 'couple_finance_shared_settings', // 부부 공유 (정산 기준 등)
   QUEUE: 'couple_finance_sync_queue',
   SYNCED_ONCE: 'couple_finance_synced_once',
   DEMO: 'couple_finance_demo_mode'
@@ -100,8 +104,14 @@ export class StorageManager {
     if (localStorage.getItem(STORAGE_KEYS.RECURRING) === null) {
       writeJSON(STORAGE_KEYS.RECURRING, isDemoMode() ? DEMO_RECURRING : DEFAULT_RECURRING);
     }
+    if (localStorage.getItem(STORAGE_KEYS.SETTLEMENTS) === null) {
+      writeJSON(STORAGE_KEYS.SETTLEMENTS, DEFAULT_SETTLEMENTS);
+    }
     if (localStorage.getItem(STORAGE_KEYS.SETTINGS) === null) {
-      writeJSON(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+      writeJSON(STORAGE_KEYS.SETTINGS, DEFAULT_DEVICE_SETTINGS);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.SHARED_SETTINGS) === null) {
+      writeJSON(STORAGE_KEYS.SHARED_SETTINGS, DEFAULT_SHARED_SETTINGS);
     }
     // ⚠️ 여기서 syncFromCloud() 를 호출하지 않습니다.
     //    app.js 가 한 번만 호출하도록 하여 중복 실행/경쟁을 막습니다.
@@ -158,6 +168,12 @@ export class StorageManager {
           ok = op.op === 'delete'
             ? await SupabaseSyncEngine.deleteAccount(op.id)
             : await SupabaseSyncEngine.saveAccounts([op.data]);
+        } else if (op.table === 'settlements') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteSettlement(op.id)
+            : await SupabaseSyncEngine.saveSettlements([op.data]);
+        } else if (op.table === 'app_settings') {
+          ok = await SupabaseSyncEngine.saveAppSettings(op.data);
         } else if (op.table === 'recurring') {
           ok = op.op === 'delete'
             ? await SupabaseSyncEngine.deleteRecurring(op.id)
@@ -293,6 +309,25 @@ export class StorageManager {
       }
     }
 
+    // 10) 정산 이력
+    const cloudSettlements = await SupabaseSyncEngine.fetchSettlements();
+    if (Array.isArray(cloudSettlements)) {
+      if (cloudSettlements.length > 0) {
+        writeJSON(STORAGE_KEYS.SETTLEMENTS, cloudSettlements);
+      } else if (!syncedOnce) {
+        const local = this.getSettlements();
+        if (local.length > 0) await SupabaseSyncEngine.saveSettlements(local);
+      }
+    }
+
+    // 11) 부부 공유 설정
+    const cloudAppSettings = await SupabaseSyncEngine.fetchAppSettings();
+    if (cloudAppSettings && typeof cloudAppSettings === 'object') {
+      writeJSON(STORAGE_KEYS.SHARED_SETTINGS, { ...DEFAULT_SHARED_SETTINGS, ...cloudAppSettings });
+    } else {
+      await SupabaseSyncEngine.saveAppSettings(this.getSharedSettings());
+    }
+
     localStorage.setItem(STORAGE_KEYS.SYNCED_ONCE, '1');
     return 'synced';
   }
@@ -381,6 +416,65 @@ export class StorageManager {
     return transactions[index];
   }
 
+  /**
+   * 할부 거래를 등록합니다. 회차 수만큼 거래를 한 번에 만듭니다.
+   *
+   * 구매 금액을 구매월에 통째로 잡지 않고 회차별로 나누는 이유:
+   *  - 월 예산·부부 정산·카드 결제액이 전부 "그 달에 실제로 나가는 돈" 기준입니다.
+   *  - 각 회차는 카드 계좌에 달려 있어 카드 청구 주기에 자동으로 포함됩니다.
+   *
+   * @param base  공통 거래 정보 (date, categoryId, userId, sharedType, accountId, memo ...)
+   * @param plan  { months, annualRate }
+   */
+  static async addInstallment(base, plan) {
+    const schedule = buildInstallmentSchedule(base.amount, plan.months, base.date, plan.annualRate || 0);
+    const installmentId = 'inst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const now = new Date().toISOString();
+
+    const created = schedule.rows.map(row => ({
+      ...base,
+      id: `${installmentId}_${String(row.seq).padStart(2, '0')}`,
+      date: row.date,
+      amount: row.amount,
+      type: 'expense',
+      // 할부금은 매달 고정으로 나가는 확정 지출입니다.
+      // (변동비로 두면 월말 예상 지출에서 잘못 외삽됩니다)
+      isFixed: true,
+      memo: base.memo || '할부 결제',
+      installmentId,
+      installmentSeq: row.seq,
+      installmentMonths: schedule.months,
+      installmentPrincipal: schedule.principal,
+      installmentFee: row.fee,
+      installmentRate: schedule.annualRate,
+      createdAt: now,
+      updatedAt: now
+    }));
+
+    const list = this.getTransactions();
+    created.forEach(t => list.unshift(t));
+    list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    this.saveTransactions(list);
+
+    for (const t of created) await this._pushTransaction(t);
+    return { installmentId, schedule, created };
+  }
+
+  /** 할부 전체(남은 회차 포함)를 삭제합니다 */
+  static async deleteInstallment(installmentId) {
+    const all = this.getTransactions();
+    const targets = all.filter(t => t.installmentId === installmentId);
+    if (targets.length === 0) return 0;
+
+    this.saveTransactions(all.filter(t => t.installmentId !== installmentId));
+
+    if (!isDemoMode()) {
+      const ok = await SupabaseSyncEngine.deleteTransactionsByIds(targets.map(t => t.id));
+      if (!ok) targets.forEach(t => this._enqueue({ table: 'transactions', op: 'delete', id: t.id }));
+    }
+    return targets.length;
+  }
+
   static async deleteTransaction(id) {
     const transactions = this.getTransactions().filter(t => t.id !== id);
     this.saveTransactions(transactions);
@@ -388,6 +482,181 @@ export class StorageManager {
     const ok = await SupabaseSyncEngine.deleteTransaction(id);
     if (!ok) this._enqueue({ table: 'transactions', op: 'delete', id });
     return ok;
+  }
+
+  /**
+   * 이번 달에 "금액 확인"이 필요한 변동 반복 거래 목록.
+   * 지난달 실제 금액을 제안값으로 함께 돌려줍니다.
+   */
+  static getPendingRecurring(monthStr) {
+    const transactions = this.getTransactions();
+    const existingIds = new Set(transactions.map(t => t.id));
+
+    return this.getRecurring()
+      .filter(r => r.active !== false && r.amountMode === 'variable')
+      .filter(r => !(r.startMonth && monthStr < r.startMonth))
+      .filter(r => !(r.endMonth && monthStr > r.endMonth))
+      .filter(r => !existingIds.has(`rtx_${r.id}_${monthStr}`))
+      .filter(r => !(Array.isArray(r.skips) && r.skips.includes(monthStr)))
+      .map(r => {
+        // 가장 최근에 실제로 입력된 금액을 제안값으로 씁니다
+        const past = transactions
+          .filter(t => t.recurringId === r.id && String(t.date).slice(0, 7) < monthStr)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+        const lastTx = past[0] || null;
+        return {
+          template: r,
+          suggestedAmount: lastTx ? Number(lastTx.amount) || 0 : (Number(r.amount) || 0),
+          lastMonth: lastTx ? String(lastTx.date).slice(0, 7) : null
+        };
+      });
+  }
+
+  /** 변동 반복 거래를 이번 달 금액으로 확정합니다 */
+  static async confirmRecurring(templateId, monthStr, amount) {
+    const tpl = this.getRecurring().find(r => r.id === templateId);
+    if (!tpl) return null;
+
+    const amt = Number(amount) || 0;
+    if (amt <= 0) return null;
+
+    const [y, m] = monthStr.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const day = Math.min(Math.max(Number(tpl.dayOfMonth) || 1, 1), daysInMonth);
+    const now = new Date().toISOString();
+
+    const tx = {
+      id: `rtx_${tpl.id}_${monthStr}`,
+      date: `${monthStr}-${String(day).padStart(2, '0')}`,
+      type: tpl.type || 'expense',
+      amount: amt,
+      userId: tpl.userId || 'husband',
+      categoryId: tpl.type === 'transfer' ? '' : (tpl.categoryId || ''),
+      sharedType: tpl.sharedType || 'shared',
+      paymentMethod: tpl.paymentMethod || 'bank',
+      accountId: tpl.accountId || '',
+      isFixed: tpl.type === 'expense',
+      memo: tpl.memo || tpl.name || '반복 거래',
+      recurringId: tpl.id,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const list = this.getTransactions().filter(t => t.id !== tx.id);
+    list.unshift(tx);
+    list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    this.saveTransactions(list);
+    await this._pushTransaction(tx);
+
+    // 다음 달 제안값이 이번 금액이 되도록 템플릿도 갱신
+    await this.updateRecurring(templateId, { amount: amt });
+    return tx;
+  }
+
+  /** 이번 달은 건너뜁니다 (다시 묻지 않음) */
+  static async skipRecurring(templateId, monthStr) {
+    const tpl = this.getRecurring().find(r => r.id === templateId);
+    if (!tpl) return null;
+    const skips = Array.isArray(tpl.skips) ? tpl.skips.slice() : [];
+    if (!skips.includes(monthStr)) skips.push(monthStr);
+    return this.updateRecurring(templateId, { skips });
+  }
+
+  /* ===================== 카드 결제 자동 생성 ===================== */
+
+  /**
+   * 카드 결제일이 지난 청구 건에 대해 '결제통장 → 카드' 이체 거래를 만듭니다.
+   *
+   *  - 거래 id 가 `ctx_<카드id>_<결제월>` 로 고정되어 중복 생성되지 않습니다.
+   *  - 나중에 카드 사용 내역을 더 입력하면 금액이 자동으로 보정됩니다.
+   *  - 사용액이 0원이 되면 만들어둔 결제 거래를 삭제합니다.
+   *  - 사용자가 직접 수정한 거래(autoGenerated 가 아닌 것)는 건드리지 않습니다.
+   *
+   * @returns { created, updated, removed } 각각 거래 배열/개수
+   */
+  static async applyCardSettlements(monthStr) {
+    const result = { created: [], updated: [], removed: [] };
+    if (this.getSharedSettings().cardSettlementEnabled === false) return result;
+
+    const cards = this.getAccounts().filter(a =>
+      a.type === 'card' && a.autoSettle !== false && a.paymentAccountId);
+    if (cards.length === 0) return result;
+
+    const today = todayLocalStr();
+    const transactions = this.getTransactions();
+    const byId = new Map(transactions.map(t => [t.id, t]));
+    let changed = false;
+
+    for (const card of cards) {
+      const billing = calculateCardBilling(card, transactions, monthStr);
+
+      // 아직 결제일이 오지 않았으면 만들지 않습니다 (미래 출금을 미리 찍지 않음)
+      if (billing.paymentDate > today) continue;
+
+      const txId = `ctx_${card.id}_${monthStr}`;
+      const existing = byId.get(txId);
+      const amount = Math.round(billing.amount);
+
+      if (existing && !existing.autoGenerated) continue; // 사용자가 손댄 건 존중
+
+      if (amount <= 0) {
+        if (existing) {
+          const idx = transactions.findIndex(t => t.id === txId);
+          if (idx !== -1) {
+            transactions.splice(idx, 1);
+            result.removed.push(txId);
+            changed = true;
+            if (!isDemoMode()) {
+              const ok = await SupabaseSyncEngine.deleteTransaction(txId);
+              if (!ok) this._enqueue({ table: 'transactions', op: 'delete', id: txId });
+            }
+          }
+        }
+        continue;
+      }
+
+      const owner = card.owner === 'husband' || card.owner === 'wife' ? card.owner : 'husband';
+      const now = new Date().toISOString();
+      const base = {
+        id: txId,
+        date: billing.paymentDate,
+        type: 'transfer',
+        amount,
+        userId: owner,
+        categoryId: '',
+        sharedType: card.owner === 'shared' ? 'shared' : card.owner,
+        paymentMethod: 'bank',
+        accountId: '',
+        fromAccountId: card.paymentAccountId,
+        toAccountId: card.id,
+        isFixed: false,
+        memo: `[카드결제] ${card.name} (${billing.periodStart.slice(5)}~${billing.periodEnd.slice(5)} 사용분)`,
+        autoGenerated: true,
+        cardBillingMonth: monthStr,
+        updatedAt: now
+      };
+
+      if (!existing) {
+        const tx = { ...base, createdAt: now };
+        transactions.unshift(tx);
+        result.created.push(tx);
+        changed = true;
+        await this._pushTransaction(tx);
+      } else if (Number(existing.amount) !== amount || existing.date !== base.date) {
+        const idx = transactions.findIndex(t => t.id === txId);
+        transactions[idx] = { ...existing, ...base, createdAt: existing.createdAt || now };
+        result.updated.push(transactions[idx]);
+        changed = true;
+        await this._pushTransaction(transactions[idx]);
+      }
+    }
+
+    if (changed) {
+      transactions.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      this.saveTransactions(transactions);
+    }
+    return result;
   }
 
   /* ===================== Budgets ===================== */
@@ -499,16 +768,82 @@ export class StorageManager {
     return ok;
   }
 
-  /* ===================== App Settings (기기별) ===================== */
+  /* ===================== App Settings ===================== */
 
-  static getSettings() {
-    return { ...DEFAULT_SETTINGS, ...readJSON(STORAGE_KEYS.SETTINGS, {}) };
+  /** 기기별 설정 (테마) — 이 브라우저에만 저장 */
+  static getDeviceSettings() {
+    return { ...DEFAULT_DEVICE_SETTINGS, ...readJSON(STORAGE_KEYS.SETTINGS, {}) };
   }
 
-  static saveSettings(patch) {
-    const next = { ...this.getSettings(), ...patch };
+  static saveDeviceSettings(patch) {
+    const next = { ...this.getDeviceSettings(), ...patch };
     writeJSON(STORAGE_KEYS.SETTINGS, next);
     return next;
+  }
+
+  /** 부부 공유 설정 (정산 기준 등) — 클라우드 동기화 */
+  static getSharedSettings() {
+    return { ...DEFAULT_SHARED_SETTINGS, ...readJSON(STORAGE_KEYS.SHARED_SETTINGS, {}) };
+  }
+
+  static async saveSharedSettings(patch) {
+    const next = { ...this.getSharedSettings(), ...patch };
+    writeJSON(STORAGE_KEYS.SHARED_SETTINGS, next);
+    if (isDemoMode()) return next;
+
+    const ok = await SupabaseSyncEngine.saveAppSettings(next);
+    if (!ok) this._enqueue({ table: 'app_settings', op: 'upsert', id: 'household', data: next });
+    return next;
+  }
+
+  /** 두 설정을 합쳐서 반환 (읽기 전용 용도) */
+  static getSettings() {
+    return { ...this.getDeviceSettings(), ...this.getSharedSettings() };
+  }
+
+  /* ===================== 정산 이력 ===================== */
+
+  static getSettlements() {
+    const list = readJSON(STORAGE_KEYS.SETTLEMENTS, DEFAULT_SETTLEMENTS);
+    return Array.isArray(list) ? list : [];
+  }
+
+  static getSettlementFor(monthStr) {
+    return this.getSettlements().find(x => x.month === monthStr) || null;
+  }
+
+  /** "이번 달 정산 완료" 기록 */
+  static async markSettled(monthStr, snapshot) {
+    const list = this.getSettlements().filter(x => x.month !== monthStr);
+    const record = {
+      id: 'stl_' + monthStr,
+      month: monthStr,
+      mode: snapshot.mode,
+      amount: Math.round(snapshot.amount || 0),
+      "fromUserId": snapshot.fromUserId || '',
+      "toUserId": snapshot.toUserId || '',
+      "sharedTotal": Math.round(snapshot.sharedTotal || 0),
+      "husbandPaid": Math.round(snapshot.husbandPaid || 0),
+      "wifePaid": Math.round(snapshot.wifePaid || 0),
+      "settledAt": new Date().toISOString()
+    };
+    list.push(record);
+    list.sort((a, b) => String(b.month).localeCompare(String(a.month)));
+    writeJSON(STORAGE_KEYS.SETTLEMENTS, list);
+
+    if (isDemoMode()) return record;
+    const ok = await SupabaseSyncEngine.saveSettlements([record]);
+    if (!ok) this._enqueue({ table: 'settlements', op: 'upsert', id: record.id, data: record });
+    return record;
+  }
+
+  static async unmarkSettled(monthStr) {
+    const id = 'stl_' + monthStr;
+    writeJSON(STORAGE_KEYS.SETTLEMENTS, this.getSettlements().filter(x => x.month !== monthStr));
+    if (isDemoMode()) return true;
+    const ok = await SupabaseSyncEngine.deleteSettlement(id);
+    if (!ok) this._enqueue({ table: 'settlements', op: 'delete', id });
+    return ok;
   }
 
   /* ===================== Recurring (반복 거래) ===================== */
@@ -579,6 +914,11 @@ export class StorageManager {
       if (tpl.startMonth && monthStr < tpl.startMonth) continue;
       if (tpl.endMonth && monthStr > tpl.endMonth) continue;
 
+      // ✅ 금액이 매달 달라지는 항목은 자동 생성하지 않습니다.
+      //    확인하지 않은 금액이 장부에 들어가면 통계 전체가 틀어지기 때문입니다.
+      //    대신 getPendingRecurring() 이 "확인 필요" 목록으로 올려줍니다.
+      if (tpl.amountMode === 'variable') continue;
+
       const txId = `rtx_${tpl.id}_${monthStr}`;
       if (existingIds.has(txId)) continue;
 
@@ -642,6 +982,7 @@ export class StorageManager {
       await SupabaseSyncEngine.deleteAllGoals();
       await SupabaseSyncEngine.deleteAllAccounts();
       await SupabaseSyncEngine.deleteAllRecurring();
+      await SupabaseSyncEngine.deleteAllSettlements();
     }
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
     _demoMode = null;
@@ -659,6 +1000,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.GOALS, DEMO_GOALS);
     writeJSON(STORAGE_KEYS.ACCOUNTS, DEMO_ACCOUNTS);
     writeJSON(STORAGE_KEYS.RECURRING, DEMO_RECURRING);
+    writeJSON(STORAGE_KEYS.SETTLEMENTS, []);
     this._setQueue([]);
   }
 
@@ -670,6 +1012,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.GOALS, []);
     writeJSON(STORAGE_KEYS.ACCOUNTS, []);
     writeJSON(STORAGE_KEYS.RECURRING, []);
+    writeJSON(STORAGE_KEYS.SETTLEMENTS, []);
     localStorage.removeItem(STORAGE_KEYS.SYNCED_ONCE);
   }
 
@@ -682,9 +1025,11 @@ export class StorageManager {
       goals: this.getGoals(),
       accounts: this.getAccounts(),
       recurring: this.getRecurring(),
-      settings: this.getSettings(),
+      settlements: this.getSettlements(),
+      settings: this.getDeviceSettings(),
+      sharedSettings: this.getSharedSettings(),
       exportedAt: new Date().toISOString(),
-      version: 3
+      version: 4
     }, null, 2);
   }
 
@@ -720,7 +1065,12 @@ export class StorageManager {
       if (Array.isArray(data.goals) && data.goals.length) await this.saveGoals(data.goals);
       if (Array.isArray(data.accounts) && data.accounts.length) await this.saveAccounts(data.accounts);
       if (Array.isArray(data.recurring) && data.recurring.length) await this.saveRecurringList(data.recurring);
-      if (data.settings) this.saveSettings(data.settings);
+      if (Array.isArray(data.settlements) && data.settlements.length) {
+        writeJSON(STORAGE_KEYS.SETTLEMENTS, data.settlements);
+        if (!isDemoMode()) await SupabaseSyncEngine.saveSettlements(data.settlements);
+      }
+      if (data.settings) this.saveDeviceSettings(data.settings);
+      if (data.sharedSettings) await this.saveSharedSettings(data.sharedSettings);
 
       return { ok: true, count: stamped.length };
     } catch (e) {
