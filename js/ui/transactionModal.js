@@ -48,8 +48,12 @@ export class TransactionModal {
     this.toAccountSelect = this.modalEl.querySelector('#modal-select-to');
     this.transferGroup = this.modalEl.querySelector('#modal-group-transfer');
     this.btnFixedToggle = this.modalEl.querySelector('#modal-btn-fixed');
+    this.btnVariableToggle = this.modalEl.querySelector('#modal-btn-variable');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
-    this.categoryGroup = this.categoryGrid ? this.categoryGrid.closest('.form-group') : null;
+    this.categoryGroup = this.modalEl.querySelector('#modal-group-category');
+    this.detailToggle = this.modalEl.querySelector('#modal-detail-toggle');
+    this.detailPanel = this.modalEl.querySelector('#modal-detail');
+    this.detailSummary = this.modalEl.querySelector('#modal-detail-summary');
 
     this.installmentGroup = this.modalEl.querySelector('#modal-group-installment');
     this.installmentSelect = this.modalEl.querySelector('#modal-select-installment');
@@ -98,14 +102,21 @@ export class TransactionModal {
     this.husbandPersonalBtn.addEventListener('click', () => this.setSharedType('husband'));
     this.wifePersonalBtn.addEventListener('click', () => this.setSharedType('wife'));
 
-    if (this.btnFixedToggle) {
-      this.btnFixedToggle.addEventListener('click', () => {
-        this.isFixed = !this.isFixed;
-        this.updateFixedButton();
-      });
-    }
+    // 고정/변동은 '지금 무엇이 켜져 있는지'가 한눈에 보여야 해서
+    // 다른 항목들처럼 두 개짜리 버튼으로 둡니다.
+    const setFixed = (v) => {
+      this.isFixed = v;
+      this.updateFixedButton();
+      this.updateDetailSummary();
+    };
+    if (this.btnFixedToggle) this.btnFixedToggle.addEventListener('click', () => setFixed(true));
+    if (this.btnVariableToggle) this.btnVariableToggle.addEventListener('click', () => setFixed(false));
 
     this.btnSave.addEventListener('click', () => this.save());
+
+    if (this.detailToggle) {
+      this.detailToggle.addEventListener('click', () => this.setDetailOpen(!this.detailOpen));
+    }
 
     // 금액 입력 시 천단위 미리보기 + 할부 미리보기
     if (this.inputAmount) {
@@ -116,13 +127,25 @@ export class TransactionModal {
     }
 
     if (this.installmentSelect) {
-      this.installmentSelect.addEventListener('change', () => this.updateInstallmentPreview());
+      this.installmentSelect.addEventListener('change', () => {
+        this.updateInstallmentPreview();
+        this.updateDetailSummary();
+      });
     }
     if (this.rateInput) {
       this.rateInput.addEventListener('input', () => this.updateInstallmentPreview());
     }
     if (this.inputDate) {
-      this.inputDate.addEventListener('change', () => this.updateInstallmentPreview());
+      this.inputDate.addEventListener('change', () => {
+        this.updateInstallmentPreview();
+        this.updateDetailSummary();
+      });
+    }
+    if (this.paymentMethodSelect) {
+      this.paymentMethodSelect.addEventListener('change', () => this.updateDetailSummary());
+    }
+    if (this.inputMemo) {
+      this.inputMemo.addEventListener('input', () => this.updateDetailSummary());
     }
 
     // ESC 닫기 / Enter 저장 / Tab 포커스 트랩 (모달이 열려 있을 때만)
@@ -245,6 +268,44 @@ export class TransactionModal {
     `;
   }
 
+  /**
+   * 상세 영역 펼치기/접기.
+   * 기본 입력은 금액·유형·카테고리·누가·구분 다섯 가지뿐이고,
+   * 날짜·결제수단·계좌·할부·고정변동·메모는 여기 접혀 있습니다.
+   */
+  setDetailOpen(open) {
+    this.detailOpen = !!open;
+    if (this.detailPanel) this.detailPanel.hidden = !this.detailOpen;
+    if (this.detailToggle) {
+      this.detailToggle.setAttribute('aria-expanded', String(this.detailOpen));
+      this.detailToggle.classList.toggle('open', this.detailOpen);
+      const label = this.detailToggle.querySelector('.detail-toggle-label');
+      if (label) label.textContent = this.detailOpen ? '상세 접기' : '상세 입력';
+    }
+    this.updateDetailSummary();
+  }
+
+  /** 접혀 있을 때, 안에 무엇이 들어 있는지 한 줄로 알려줍니다 */
+  updateDetailSummary() {
+    if (!this.detailSummary) return;
+    if (this.detailOpen) { this.detailSummary.textContent = ''; return; }
+
+    const parts = [];
+    const d = this.inputDate.value;
+    parts.push(d === todayLocalStr() ? '오늘' : (d || '날짜 없음'));
+
+    const pm = this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card';
+    parts.push(pm === 'card' ? '카드' : (pm === 'bank' ? '계좌' : '현금'));
+
+    const months = this.getInstallmentMonths();
+    if (months >= 2) parts.push(`${months}개월 할부`);
+
+    if (this.selectedType === 'expense' && this.isFixed) parts.push('고정비');
+    if (this.inputMemo.value.trim()) parts.push('메모 있음');
+
+    this.detailSummary.textContent = parts.join(' · ');
+  }
+
   isOpen() {
     return this.modalEl.classList.contains('open');
   }
@@ -262,10 +323,10 @@ export class TransactionModal {
     this.setSaveButtonState(false);
 
     const users = StorageManager.getUsers();
-    this.userHusbandBtn.textContent = `👨 ${users.husband.name}`;
-    this.userWifeBtn.textContent = `👩 ${users.wife.name}`;
-    this.husbandPersonalBtn.textContent = `👨 ${users.husband.name} 개인`;
-    this.wifePersonalBtn.textContent = `👩 ${users.wife.name} 개인`;
+    this.userHusbandBtn.textContent = users.husband.name;
+    this.userWifeBtn.textContent = users.wife.name;
+    this.husbandPersonalBtn.textContent = `${users.husband.name} 개인`;
+    this.wifePersonalBtn.textContent = `${users.wife.name} 개인`;
 
     let paymentMethod = 'card';
     let accountId = '';
@@ -276,7 +337,7 @@ export class TransactionModal {
       const tx = StorageManager.getTransactions().find(t => t.id === editingTxId);
       this.currentEditingTx = tx || null;
       if (tx) {
-        this.modalTitle.textContent = '✏️ 거래 정보 수정';
+        this.modalTitle.textContent = '거래 수정';
         this.selectedType = tx.type || 'expense';
         this.selectedUserId = tx.userId || 'husband';
         this.selectedSharedType = tx.sharedType || 'shared';
@@ -293,7 +354,7 @@ export class TransactionModal {
       }
     } else {
       this.currentEditingTx = null;
-      this.modalTitle.textContent = '⚡ 빠른 거래 등록';
+      this.modalTitle.textContent = '거래 등록';
       this.selectedType = 'expense';
       this.selectedUserId = 'husband';
       this.selectedSharedType = 'shared';
@@ -319,6 +380,9 @@ export class TransactionModal {
     if (this.installmentSelect) this.installmentSelect.value = '0';
     if (this.rateInput) this.rateInput.value = '0';
     this.editingInstallment = editingTxId ? this.currentEditingTx : null;
+
+    // 이체는 계좌 지정이 필수라 자동으로 펼치고, 수정할 때도 전체를 보여줍니다
+    this.setDetailOpen(this.selectedType === 'transfer' || !!editingTxId);
 
     this.updateTypeTabs();
     this.updateUserButtons();
@@ -372,6 +436,7 @@ export class TransactionModal {
       this.fixedGroup.style.display = this.selectedType === 'expense' ? 'block' : 'none';
     }
     const isTransfer = this.selectedType === 'transfer';
+    if (isTransfer && !this.detailOpen) this.setDetailOpen(true);
 
     // 이체는 카테고리 개념이 없으므로 아예 숨깁니다
     if (this.categoryGroup) {
@@ -404,14 +469,9 @@ export class TransactionModal {
   }
 
   updateFixedButton() {
-    if (!this.btnFixedToggle) return;
-    if (this.isFixed) {
-      this.btnFixedToggle.classList.add('active');
-      this.btnFixedToggle.textContent = '📌 고정지출 (매월 고정)';
-    } else {
-      this.btnFixedToggle.classList.remove('active');
-      this.btnFixedToggle.textContent = '🌊 변동지출 (변동)';
-    }
+    if (!this.btnFixedToggle || !this.btnVariableToggle) return;
+    this.btnFixedToggle.classList.toggle('active', this.isFixed);
+    this.btnVariableToggle.classList.toggle('active', !this.isFixed);
   }
 
   renderCategoryChips() {

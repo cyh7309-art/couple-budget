@@ -7,9 +7,9 @@ import { StorageManager } from '../storage.js';
 import { esc, parseAmount, thousands } from '../utils.js';
 
 const ACCOUNT_TYPES = [
-  { value: 'bank', label: '🏦 입출금 통장' },
-  { value: 'card', label: '💳 신용/체크카드' },
-  { value: 'cash', label: '💵 현금' }
+  { value: 'bank', label: '입출금 통장' },
+  { value: 'card', label: '신용/체크카드' },
+  { value: 'cash', label: '현금' }
 ];
 
 export function renderGoalsView(containerEl, refreshApp) {
@@ -25,9 +25,9 @@ export function renderGoalsView(containerEl, refreshApp) {
   const balances = calculateAccountBalances(accounts, transactions);
 
   const ownerLabelOf = (owner) => {
-    if (owner === 'husband') return `👨 ${husbandName}`;
-    if (owner === 'wife') return `👩 ${wifeName}`;
-    return '👫 공동';
+    if (owner === 'husband') return husbandName;
+    if (owner === 'wife') return wifeName;
+    return '공동';
   };
 
   const accountFormHtml = (acc) => `
@@ -56,7 +56,7 @@ export function renderGoalsView(containerEl, refreshApp) {
         <div class="form-group">
           <label class="form-label">소유</label>
           <select id="acc-owner" class="form-select">
-            <option value="shared" ${!acc || acc.owner === 'shared' ? 'selected' : ''}>👫 공동</option>
+            <option value="shared" ${!acc || acc.owner === 'shared' ? 'selected' : ''}>공동</option>
             <option value="husband" ${acc && acc.owner === 'husband' ? 'selected' : ''}>👨 ${husbandName}</option>
             <option value="wife" ${acc && acc.owner === 'wife' ? 'selected' : ''}>👩 ${wifeName}</option>
           </select>
@@ -72,7 +72,7 @@ export function renderGoalsView(containerEl, refreshApp) {
       <!-- 카드 전용: 청구 주기 -->
       <div id="acc-card-fields" style="display: ${acc && acc.type === 'card' ? 'block' : 'none'}">
         <div class="card-cycle-box">
-          <label class="form-label">💳 카드 결제 주기</label>
+          <label class="form-label">카드 결제 주기</label>
           <p class="card-desc">
             결제일이 지나면 <strong>결제 통장 → 카드</strong> 이체 거래가 자동으로 만들어집니다.
             나중에 카드 사용 내역을 더 입력하면 금액이 자동으로 보정됩니다.
@@ -151,7 +151,7 @@ export function renderGoalsView(containerEl, refreshApp) {
     if (upcoming.amount > 0 || sameCycle) {
       rows.push(`
         <div class="cycle-row">
-          <span class="cycle-label">📅 다음 결제 ${md(upcoming.paymentDate)}</span>
+          <span class="cycle-label">다음 결제 ${md(upcoming.paymentDate)}</span>
           <strong>${formatCurrency(upcoming.amount)}</strong>
         </div>
         <div class="acc-cycle-sub">${md(upcoming.periodStart)}~${md(upcoming.periodEnd)} 사용분</div>
@@ -159,7 +159,7 @@ export function renderGoalsView(containerEl, refreshApp) {
     } else {
       rows.push(`
         <div class="cycle-row">
-          <span class="cycle-label">📅 다음 결제 ${md(upcoming.paymentDate)}</span>
+          <span class="cycle-label">다음 결제 ${md(upcoming.paymentDate)}</span>
           <strong class="text-muted">결제할 금액 없음</strong>
         </div>
       `);
@@ -168,7 +168,7 @@ export function renderGoalsView(containerEl, refreshApp) {
     if (!sameCycle) {
       rows.push(`
         <div class="cycle-row cycle-accruing">
-          <span class="cycle-label">🧾 이번에 쌓이는 중</span>
+          <span class="cycle-label">이번에 쌓이는 중</span>
           <strong>${formatCurrency(accruing.amount)}</strong>
         </div>
         <div class="acc-cycle-sub">
@@ -192,7 +192,7 @@ export function renderGoalsView(containerEl, refreshApp) {
       <!-- Accounts -->
       <div class="card goals-accounts-card">
         <div class="card-title-row">
-          <h3 class="card-title">🏦 부부 자산 및 계좌 현황</h3>
+          <h3 class="card-title">자산과 계좌</h3>
           <button class="btn-primary-sm" id="btn-add-account">+ 계좌 추가</button>
         </div>
 
@@ -260,7 +260,7 @@ export function renderGoalsView(containerEl, refreshApp) {
       <!-- Goals -->
       <div class="card goals-main-card margin-top">
         <div class="card-title-row">
-          <h3 class="card-title">🎯 부부 재정 목표 (Goals)</h3>
+          <h3 class="card-title">재정 목표</h3>
           <button class="btn-primary-sm" id="btn-add-goal">+ 새 목표 추가</button>
         </div>
 

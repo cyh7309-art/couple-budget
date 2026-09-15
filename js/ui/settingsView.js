@@ -35,7 +35,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
     containerEl.innerHTML = `
       ${isDemoMode() ? `
         <div class="card settings-card" style="border-left:4px solid #f59e0b">
-          <h3 class="card-title">🧪 지금은 데모(샘플) 모드입니다</h3>
+          <h3 class="card-title">지금은 데모 모드입니다</h3>
           <p class="card-desc">
             화면에 보이는 거래·예산·목표·계좌는 전부 <strong>가짜 샘플 데이터</strong>이며,
             클라우드에 저장되지 않고 배우자 기기와도 공유되지 않습니다.
@@ -58,7 +58,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <!-- 계정 -->
       ${isDemoMode() ? '' : `
         <div class="card settings-card margin-top">
-          <h3 class="card-title">🔐 계정 및 동기화</h3>
+          <h3 class="card-title">계정과 동기화</h3>
           ${isAuthenticated() ? `
             <p class="card-desc">
               <strong>${esc((getSession() && getSession().user && getSession().user.email) || '')}</strong> 계정으로 로그인되어 있습니다.
@@ -78,16 +78,16 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <!-- 화면 (기기별) -->
       <div class="card settings-card margin-top">
         <div class="card-title-row">
-          <h3 class="card-title">🎨 화면</h3>
-          <span class="badge badge-variable">📱 이 기기에만 적용</span>
+          <h3 class="card-title">화면</h3>
+          <span class="badge badge-variable">이 기기에만</span>
         </div>
 
         <div class="form-group">
           <label class="form-label">테마</label>
           <select id="select-theme" class="form-select">
-            <option value="system" ${deviceSettings.theme === 'system' ? 'selected' : ''}>🖥️ 시스템 설정 따르기</option>
-            <option value="light" ${deviceSettings.theme === 'light' ? 'selected' : ''}>☀️ 라이트</option>
-            <option value="dark" ${deviceSettings.theme === 'dark' ? 'selected' : ''}>🌙 다크</option>
+            <option value="system" ${deviceSettings.theme === 'system' ? 'selected' : ''}>시스템 설정 따르기</option>
+            <option value="light" ${deviceSettings.theme === 'light' ? 'selected' : ''}>라이트</option>
+            <option value="dark" ${deviceSettings.theme === 'dark' ? 'selected' : ''}>다크</option>
           </select>
         </div>
         <p class="card-desc">테마는 기기마다 다르게 쓰는 게 자연스러워서 이 기기에만 저장됩니다.</p>
@@ -96,8 +96,8 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <!-- 부부 공유 설정 -->
       <div class="card settings-card margin-top">
         <div class="card-title-row">
-          <h3 class="card-title">👫 부부 공유 설정</h3>
-          <span class="badge badge-shared">☁️ 두 기기 모두 적용</span>
+          <h3 class="card-title">부부 공유 설정</h3>
+          <span class="badge badge-shared">두 기기 모두</span>
         </div>
 
         <div class="form-group">
@@ -121,16 +121,16 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
 
       <!-- 사용자 이름 -->
       <div class="card settings-card margin-top">
-        <h3 class="card-title">👨‍👩‍👧 부부 사용자 이름 설정</h3>
+        <h3 class="card-title">사용자 이름</h3>
         <p class="card-desc">가계부에서 사용할 부부의 명칭을 설정하세요.</p>
 
         <div class="setting-form-row">
           <div class="form-group">
-            <label class="form-label">👨 남편 이름</label>
+            <label class="form-label">남편 이름</label>
             <input type="text" id="input-husband-name" class="form-input" maxlength="20" value="${esc(husbandName)}" />
           </div>
           <div class="form-group">
-            <label class="form-label">👩 아내 이름</label>
+            <label class="form-label">아내 이름</label>
             <input type="text" id="input-wife-name" class="form-input" maxlength="20" value="${esc(wifeName)}" />
           </div>
         </div>
@@ -141,7 +141,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <div class="card settings-card margin-top">
         <div class="card-title-row">
           <div>
-            <h3 class="card-title">🔁 반복 거래 (고정비 자동 입력)</h3>
+            <h3 class="card-title">반복 거래</h3>
             <p class="card-desc">
               월세·보험료·구독료처럼 매달 반복되는 항목을 등록해두면 자동으로 거래가 만들어집니다.
               같은 달에 두 번 생성되지 않습니다.
@@ -171,7 +171,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
                       <span class="badge ${r.type === 'income' ? 'badge-income' : 'badge-expense'}">
                         ${r.type === 'income' ? '수입' : '지출'}
                       </span>
-                      ${r.amountMode === 'variable' ? '<span class="badge badge-caution">📝 변동</span>' : ''}
+                      ${r.amountMode === 'variable' ? '<span class="badge badge-caution">변동</span>' : ''}
                       ${inactive ? '<span class="badge badge-variable">일시중지</span>' : ''}
                     </div>
                     <div class="rec-meta">
@@ -196,10 +196,10 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
             }).join('')}
           </div>
           <button class="btn-secondary-sm margin-top-sm" id="btn-run-recurring">
-            ▶️ ${esc(currentMonthStr)} 반복 거래 지금 생성
+            ${esc(currentMonthStr)} 반복 거래 생성
           </button>
           <button class="btn-secondary-sm margin-top-sm" id="btn-run-card">
-            💳 ${esc(currentMonthStr)} 카드 결제 거래 갱신
+            ${esc(currentMonthStr)} 카드 결제 갱신
           </button>
         `}
       </div>
@@ -208,7 +208,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <div class="card settings-card margin-top">
         <div class="card-title-row">
           <div>
-            <h3 class="card-title">💰 ${esc(currentMonthStr)} 카테고리별 예산 설정</h3>
+            <h3 class="card-title">${esc(currentMonthStr)} 예산</h3>
             <p class="card-desc">
               ${inheritedFrom
                 ? `이 달에는 아직 예산이 없어 <strong>${esc(inheritedFrom)}</strong> 예산을 그대로 불러왔습니다. 확인 후 저장하면 이 달 예산으로 확정됩니다.`
@@ -243,7 +243,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
       <!-- 카테고리 -->
       <div class="card settings-card margin-top">
         <div class="card-title-row">
-          <h3 class="card-title">🏷️ 카테고리 관리</h3>
+          <h3 class="card-title">카테고리</h3>
           <button class="btn-secondary-sm" id="btn-add-category">+ 카테고리 추가</button>
         </div>
 
@@ -273,17 +273,17 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
 
       <!-- 데이터 -->
       <div class="card settings-card margin-top">
-        <h3 class="card-title">💾 데이터 저장 및 백업 / 복원</h3>
+        <h3 class="card-title">데이터 백업과 복원</h3>
         <p class="card-desc">가계부 데이터를 JSON 파일로 내보내거나, 기존 백업 파일을 복원할 수 있습니다.</p>
 
         <div class="backup-btn-group">
-          <button class="btn-primary-sm" id="btn-export-json">📥 데이터 백업 파일 다운로드 (JSON)</button>
+          <button class="btn-primary-sm" id="btn-export-json">백업 파일 내려받기</button>
           <label class="btn-secondary-sm" style="cursor: pointer; display: inline-block;">
-            📤 백업 파일 복원 (JSON)
+            백업 파일 복원
             <input type="file" id="input-import-json" accept=".json,application/json" style="display: none;" />
           </label>
-          <button class="btn-secondary-sm" id="btn-purge-sample">🧹 샘플 데이터 정리 (로컬 + 클라우드)</button>
-          <button class="btn-danger-sm" id="btn-clear-all">🗑️ 모든 데이터 초기화</button>
+          <button class="btn-secondary-sm" id="btn-purge-sample">샘플 데이터 정리</button>
+          <button class="btn-danger-sm" id="btn-clear-all">모든 데이터 초기화</button>
         </div>
         <p class="card-desc margin-top-sm">
           <strong>샘플 데이터 정리</strong>는 초기 버전이 자동으로 심어둔 예시 데이터만 골라서 삭제합니다.
@@ -332,8 +332,8 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           <div class="form-group">
             <label class="form-label">유형</label>
             <select id="rec-type" class="form-select">
-              <option value="expense" ${type === 'expense' ? 'selected' : ''}>💸 지출</option>
-              <option value="income" ${type === 'income' ? 'selected' : ''}>💰 수입</option>
+              <option value="expense" ${type === 'expense' ? 'selected' : ''}>지출</option>
+              <option value="income" ${type === 'income' ? 'selected' : ''}>수입</option>
             </select>
           </div>
           <div class="form-group">

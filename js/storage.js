@@ -12,6 +12,7 @@
 import {
   DEFAULT_USERS, DEFAULT_CATEGORIES, DEFAULT_BUDGETS, DEFAULT_GOALS, DEFAULT_ACCOUNTS,
   DEFAULT_DEVICE_SETTINGS, DEFAULT_SHARED_SETTINGS, DEFAULT_RECURRING, DEFAULT_SETTLEMENTS,
+  LEGACY_CATEGORY_COLORS, CATEGORY_COLOR,
   DEMO_BUDGETS, DEMO_GOALS, DEMO_ACCOUNTS, DEMO_RECURRING, generateDemoTransactions,
   isSampleTransactionId, SAMPLE_BUDGET_IDS, SAMPLE_GOAL_IDS
 } from './models.js';
@@ -113,6 +114,8 @@ export class StorageManager {
     if (localStorage.getItem(STORAGE_KEYS.SHARED_SETTINGS) === null) {
       writeJSON(STORAGE_KEYS.SHARED_SETTINGS, DEFAULT_SHARED_SETTINGS);
     }
+    this.migrateCategoryColors();
+
     // ⚠️ 여기서 syncFromCloud() 를 호출하지 않습니다.
     //    app.js 가 한 번만 호출하도록 하여 중복 실행/경쟁을 막습니다.
   }
@@ -261,6 +264,7 @@ export class StorageManager {
       this.getCategories().forEach(c => catMap.set(c.id, c));
       cloudCats.forEach(c => catMap.set(c.id, c)); // 클라우드 우선
       writeJSON(STORAGE_KEYS.CATEGORIES, Array.from(catMap.values()));
+      this.migrateCategoryColors();
     } else {
       await SupabaseSyncEngine.saveCategories(this.getCategories());
     }
@@ -356,6 +360,31 @@ export class StorageManager {
   static getCategories() {
     const c = readJSON(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
     return Array.isArray(c) ? c : DEFAULT_CATEGORIES;
+  }
+
+  /**
+   * 구버전에 저장된 무지개 카테고리 색을 Honeycomb 으로 한 번만 옮깁니다.
+   * 사용자가 직접 고른 색은 건드리지 않고, 예전 기본값과 정확히 일치하는 것만 바꿉니다.
+   */
+  static migrateCategoryColors() {
+    const cats = this.getCategories();
+    let changed = false;
+
+    const next = cats.map(c => {
+      const legacy = LEGACY_CATEGORY_COLORS[c.type] || [];
+      if (legacy.includes(String(c.color || '').toLowerCase())) {
+        changed = true;
+        return { ...c, color: CATEGORY_COLOR[c.type] || CATEGORY_COLOR.expense };
+      }
+      return c;
+    });
+
+    if (!changed) return false;
+    writeJSON(STORAGE_KEYS.CATEGORIES, next);
+    if (!isDemoMode()) {
+      SupabaseSyncEngine.saveCategories(next).catch(() => {});
+    }
+    return true;
   }
 
   static async saveCategories(categories) {

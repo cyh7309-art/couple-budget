@@ -1,5 +1,10 @@
 /**
  * Dashboard View (Home / 메인 대시보드)
+ *
+ * 구성 원칙
+ *  1. 이번 달에 남은 돈 하나를 가장 크게 둔다. 수입·지출은 그 아래 작게.
+ *  2. 손이 가야 하는 일(금액 확인·정산)은 큰 카드가 아니라 한 줄짜리 행으로 위에 모은다.
+ *  3. 구역 제목에는 이모지를 쓰지 않는다. 카테고리 이모지는 데이터라 남긴다.
  */
 
 import {
@@ -24,14 +29,14 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
   const budgets = StorageManager.getBudgets();
   const users = StorageManager.getUsers();
   const settings = StorageManager.getSharedSettings();
-  const settledRecord = StorageManager.getSettlementFor(currentMonthStr);
-  const pendingRecurring = StorageManager.getPendingRecurring(currentMonthStr);
-  const installments = calculateInstallments(transactions, currentMonthStr);
 
   const summary = calculateMonthlySummary(transactions, currentMonthStr);
   const mom = calculateMonthOverMonth(transactions, currentMonthStr);
   const pace = calculateSpendingPace(transactions, currentMonthStr);
   const settlement = calculateSettlement(transactions, currentMonthStr, settings.settlementMode);
+  const settledRecord = StorageManager.getSettlementFor(currentMonthStr);
+  const pendingRecurring = StorageManager.getPendingRecurring(currentMonthStr);
+  const installments = calculateInstallments(transactions, currentMonthStr);
 
   const catBreakdown = calculateCategoryBreakdown(transactions, categories, currentMonthStr);
   const budgetList = calculateBudgetProgress(transactions, budgets, categories, currentMonthStr);
@@ -45,63 +50,149 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
 
   const husbandName = esc(users.husband.name);
   const wifeName = esc(users.wife.name);
+  const nameOf = (id) => (id === 'wife' ? wifeName : husbandName);
 
-  /** 증감률 문구 — 비교 대상이 없으면 정직하게 "비교 불가"라고 씁니다 */
-  const changeText = (pct, goodWhenDown) => {
-    if (pct === null) {
-      return `<span class="text-muted">${esc(mom.prevMonthStr)} 데이터 없음</span>`;
-    }
-    const up = pct >= 0;
-    const good = goodWhenDown ? !up : up;
-    const arrow = up ? '▲' : '▼';
-    return `<span class="${good ? 'text-positive' : 'text-negative'}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
-  };
-
-  // 정산 완료로 표시한 뒤에 공동지출이 더 들어왔는지 확인
   const settledDrift = settledRecord
     ? Math.round(settlement.sharedTotal) - Math.round(settledRecord.sharedTotal || 0)
     : 0;
-
   const recentSettlements = StorageManager.getSettlements()
     .filter(x => x.month !== currentMonthStr)
     .slice(0, 3);
 
-  const nameOf = (userId) => (userId === 'wife' ? `👩 ${wifeName}` : `👨 ${husbandName}`);
+  /* ---------- 히어로 ---------- */
+  const expenseShare = summary.totalIncome > 0
+    ? Math.min((summary.totalExpense / summary.totalIncome) * 100, 100)
+    : (summary.totalExpense > 0 ? 100 : 0);
 
-  const settlementCard = `
-    <div class="card dash-card settlement-card">
-      <div class="card-title-row">
-        <h3 class="card-title">🤝 이번 달 부부 정산</h3>
-        <span class="badge ${settledRecord ? 'badge-normal' : 'badge-shared'}">${esc(settlement.ratioBasis)}</span>
+  // 히어로에 띄우는 숫자가 '남은 돈'이므로 증감도 잔액끼리 비교합니다
+  const prevBalance = mom.prevBase.balance;
+  const balanceChangePct = prevBalance > 0
+    ? ((summary.balance - prevBalance) / prevBalance) * 100
+    : null;
+
+  const deltaHtml = (pct, goodWhenDown) => {
+    if (pct === null) {
+      return `<span class="hero-delta muted">${esc(mom.prevMonthStr)} 기록 없음</span>`;
+    }
+    const up = pct >= 0;
+    const good = goodWhenDown ? !up : up;
+    return `<span class="hero-delta ${good ? 'good' : 'bad'}">
+      ${up ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%
+    </span>`;
+  };
+
+  const heroHtml = `
+    <section class="hero">
+      <span class="hero-label">${esc(String(parseInt(currentMonthStr.split('-')[1], 10)))}월에 남은 돈</span>
+      <div class="hero-amount">
+        <strong>${Math.round(summary.balance).toLocaleString('ko-KR')}</strong>
+        <span class="hero-unit">원</span>
+      </div>
+      <div class="hero-sub">
+        ${deltaHtml(balanceChangePct, false)}
+        <span class="hero-basis">${esc(mom.basisLabel)}</span>
       </div>
 
-      ${settlement.sharedTotal === 0 ? `
-        <div class="empty-state">
-          <span class="empty-icon">🤝</span>
-          <p>공동생활비로 기록된 지출이 없습니다.</p>
+      <div class="hero-bar" role="img" aria-label="수입 대비 지출 비율 ${expenseShare.toFixed(0)}%">
+        <div class="hero-bar-fill" style="width: ${expenseShare}%"></div>
+      </div>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-label">수입</span>
+          <strong>${formatCurrency(summary.totalIncome)}</strong>
         </div>
-      ` : `
+        <div class="hero-stat">
+          <span class="hero-stat-label">지출</span>
+          <strong class="text-expense">${formatCurrency(summary.totalExpense)}</strong>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-label">남긴 비율</span>
+          <strong>${formatPercent(summary.savingsRate)}</strong>
+        </div>
+      </div>
+    </section>
+  `;
+
+  /* ---------- 처리할 일 ---------- */
+  const todoItems = [];
+
+  pendingRecurring.forEach(item => {
+    todoItems.push(`
+      <div class="todo-row" data-id="${esc(item.template.id)}">
+        <div class="todo-icon warn" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+        </div>
+        <div class="todo-text">
+          <span class="todo-title">${esc(item.template.name)} 금액 확인</span>
+          <span class="todo-meta">
+            ${item.lastMonth
+              ? `${esc(item.lastMonth)} 실제 ${formatCurrency(item.suggestedAmount)}`
+              : '이전 기록 없음'} · 매월 ${Number(item.template.dayOfMonth) || 1}일
+          </span>
+        </div>
+        <div class="todo-action">
+          <input type="text" inputmode="numeric" class="form-input pending-amount"
+                 data-id="${esc(item.template.id)}" aria-label="${esc(item.template.name)} 금액"
+                 value="${thousands(item.suggestedAmount)}" />
+          <button class="btn-primary-sm btn-confirm-rec" data-id="${esc(item.template.id)}">확정</button>
+          <button class="btn-text btn-skip-rec" data-id="${esc(item.template.id)}">이번 달 없음</button>
+        </div>
+      </div>
+    `);
+  });
+
+  const settleInTodo = settlement.sharedTotal > 0 && !settledRecord && !settlement.settled;
+  if (settleInTodo) {
+    todoItems.push(`
+      <div class="todo-row">
+        <div class="todo-icon accent" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"></path><path d="M21 3 9 15"></path><path d="M8 21H3v-5"></path><path d="m3 21 12-12"></path></svg>
+        </div>
+        <div class="todo-text">
+          <span class="todo-title">${nameOf(settlement.fromUserId)} → ${nameOf(settlement.toUserId)} 정산</span>
+          <span class="todo-meta">${formatCurrency(settlement.amount)} · ${esc(settlement.ratioBasis)}</span>
+        </div>
+        <div class="todo-action">
+          <button class="btn-primary-sm" id="btn-settle-quick">완료로 표시</button>
+        </div>
+      </div>
+    `);
+  }
+
+  const todoHtml = todoItems.length === 0 ? '' : `
+    <section class="board-section">
+      <h2 class="section-label">처리할 일</h2>
+      <div class="todo-list">${todoItems.join('')}</div>
+    </section>
+  `;
+
+  /* ---------- 정산 ---------- */
+  const settlementHtml = settlement.sharedTotal === 0 ? '' : `
+    <section class="board-section">
+      <div class="section-head">
+        <h2 class="section-label">부부 정산</h2>
+        <span class="section-note">${esc(settlement.ratioBasis)}</span>
+      </div>
+
+      <div class="card settlement-card">
         ${settledRecord ? `
           <div class="settle-headline settled">
-            ✅ <strong>${esc(currentMonthStr)} 정산 완료</strong>
+            <strong>${esc(currentMonthStr)} 정산 완료</strong>
             ${settledRecord.amount > 0
-              ? `— ${nameOf(settledRecord.fromUserId)} → ${nameOf(settledRecord.toUserId)}
+              ? ` — ${nameOf(settledRecord.fromUserId)} → ${nameOf(settledRecord.toUserId)}
                  <strong>${formatCurrency(settledRecord.amount)}</strong>`
-              : '— 정산할 금액이 없었습니다'}
-            <div class="settle-meta">
-              ${esc(String(settledRecord.settledAt || '').slice(0, 10))} 에 완료 표시함
-            </div>
+              : ' — 정산할 금액이 없었습니다'}
+            <div class="settle-meta">${esc(String(settledRecord.settledAt || '').slice(0, 10))} 에 표시함</div>
           </div>
 
           ${settledDrift !== 0 ? `
             <div class="settle-drift">
-              ⚠️ 정산 완료 이후 공동생활비가
-              <strong>${formatCurrency(Math.abs(settledDrift))}</strong>
-              ${settledDrift > 0 ? '늘었습니다' : '줄었습니다'}
-              (기록 당시 ${formatCurrency(settledRecord.sharedTotal)} → 현재 ${formatCurrency(settlement.sharedTotal)}).
-              <br>지금 기준 정산액은
-              ${settlement.settled ? '0원' : `${nameOf(settlement.fromUserId)} → ${nameOf(settlement.toUserId)} ${formatCurrency(settlement.amount)}`} 입니다.
-              <button class="btn-secondary-sm" id="btn-resettle">🔄 현재 기준으로 다시 정산</button>
+              정산 완료 이후 공동생활비가 <strong>${formatCurrency(Math.abs(settledDrift))}</strong>
+              ${settledDrift > 0 ? '늘었습니다' : '줄었습니다'}.
+              지금 기준으로는
+              ${settlement.settled ? '정산할 금액이 없습니다' : `${nameOf(settlement.fromUserId)} → ${nameOf(settlement.toUserId)} ${formatCurrency(settlement.amount)} 입니다`}.
+              <button class="btn-secondary-sm" id="btn-resettle">현재 기준으로 다시 정산</button>
             </div>
           ` : ''}
 
@@ -109,12 +200,12 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
         ` : `
           <div class="settle-headline">
             ${settlement.settled
-              ? '✅ 정산할 금액이 없습니다. 부담이 균형을 이루고 있어요.'
+              ? '정산할 금액이 없습니다. 부담이 균형을 이루고 있어요.'
               : `<strong>${nameOf(settlement.fromUserId)}</strong> 님이
                  <strong>${nameOf(settlement.toUserId)}</strong> 님에게
                  <strong class="settle-amount">${formatCurrency(settlement.amount)}</strong> 보내면 정산 완료`}
           </div>
-          <button class="btn-primary-sm settle-done-btn" id="btn-settle">✅ 정산 완료로 표시</button>
+          ${(settlement.settled || settleInTodo) ? '' : '<button class="btn-primary-sm settle-done-btn" id="btn-settle">정산 완료로 표시</button>'}
         `}
 
         <div class="settle-grid">
@@ -123,20 +214,20 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
             <strong>${formatCurrency(settlement.sharedTotal)}</strong>
           </div>
           <div class="settle-row">
-            <span>👨 ${husbandName} 실제 결제</span>
+            <span><span class="who-dot who-h"></span> ${husbandName} 실제 결제</span>
             <strong>${formatCurrency(settlement.husbandPaid)}</strong>
             <span class="settle-should">부담해야 할 몫 ${formatCurrency(settlement.husbandShouldPay)}</span>
           </div>
           <div class="settle-row">
-            <span>👩 ${wifeName} 실제 결제</span>
+            <span><span class="who-dot who-w"></span> ${wifeName} 실제 결제</span>
             <strong>${formatCurrency(settlement.wifePaid)}</strong>
             <span class="settle-should">부담해야 할 몫 ${formatCurrency(settlement.wifeShouldPay)}</span>
           </div>
         </div>
 
         <div class="settle-bar">
-          <div class="settle-seg settle-h" style="width: ${settlement.sharedTotal > 0 ? (settlement.husbandPaid / settlement.sharedTotal) * 100 : 0}%"></div>
-          <div class="settle-seg settle-w" style="width: ${settlement.sharedTotal > 0 ? (settlement.wifePaid / settlement.sharedTotal) * 100 : 0}%"></div>
+          <div class="settle-seg settle-h" style="width: ${(settlement.husbandPaid / settlement.sharedTotal) * 100}%"></div>
+          <div class="settle-seg settle-w" style="width: ${(settlement.wifePaid / settlement.sharedTotal) * 100}%"></div>
         </div>
         <div class="settle-legend">
           <span><span class="dot dot-h"></span> ${husbandName} 결제 비중</span>
@@ -156,81 +247,149 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
             `).join('')}
           </div>
         ` : ''}
+      </div>
+    </section>
+  `;
+
+  /* ---------- 예산 ---------- */
+  const budgetHtml = `
+    <section class="board-section">
+      <div class="section-head">
+        <h2 class="section-label">예산</h2>
+        <button class="btn-text" id="btn-go-settings">설정</button>
+      </div>
+
+      ${budgetList.length === 0 ? `
+        <div class="card empty-state">
+          <span class="empty-icon">📝</span>
+          <p>설정된 예산이 없습니다. 설정에서 카테고리별 예산을 정해보세요.</p>
+        </div>
+      ` : `
+        <div class="card budget-list">
+          ${budgetList.map(b => `
+            <div class="budget-item">
+              <div class="budget-header">
+                <span class="budget-name">${esc(b.categoryName)}</span>
+                <span class="budget-vals">
+                  <strong>${Math.round(b.usedAmount).toLocaleString('ko-KR')}</strong>
+                  <span class="budget-cap">/ ${Math.round(b.budgetAmount).toLocaleString('ko-KR')}</span>
+                </span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill ${b.status}" style="width: ${b.progressPct}%"></div>
+              </div>
+              <div class="budget-foot">
+                <span class="badge ${b.statusBadgeClass}">${esc(b.statusLabel)}</span>
+                ${b.paceMessage ? `<span class="budget-pace">${esc(b.paceMessage)}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
       `}
-    </div>
+    </section>
   `;
 
-  const pendingCard = pendingRecurring.length === 0 ? '' : `
-    <div class="card dash-card pending-card">
-      <div class="card-title-row">
-        <h3 class="card-title">📝 이번 달 금액 확인이 필요합니다</h3>
-        <span class="badge badge-caution">${pendingRecurring.length}건</span>
-      </div>
-      <p class="card-desc">
-        관리비처럼 매달 금액이 달라지는 항목입니다.
-        확인하지 않은 금액이 장부에 들어가지 않도록 자동 생성하지 않았습니다.
-      </p>
-
-      <div class="pending-list">
-        ${pendingRecurring.map(item => `
-          <div class="pending-item" data-id="${esc(item.template.id)}">
-            <div class="pending-info">
-              <strong>${esc(item.template.name)}</strong>
-              <div class="pending-meta">
-                매월 ${Number(item.template.dayOfMonth) || 1}일 ·
-                ${item.lastMonth
-                  ? `${esc(item.lastMonth)} 실제 금액 ${formatCurrency(item.suggestedAmount)}`
-                  : '이전 기록 없음'}
+  /* ---------- 지출 속도 · 고정변동 · 공동개인 ---------- */
+  const paceHtml = pace.isFuture ? '' : `
+    <section class="board-section">
+      <h2 class="section-label">이번 달 흐름</h2>
+      <div class="widgets-row">
+        <div class="card widget-card">
+          <h3 class="widget-title">지출 속도</h3>
+          <div class="pace-rows">
+            <div class="pace-row"><span>일평균</span><strong>${formatCurrency(pace.dailyAverage)}</strong></div>
+            <div class="pace-row"><span>변동비 일평균</span><strong>${formatCurrency(pace.dailyVariableAverage)}</strong></div>
+            ${pace.isCurrent ? `
+              <div class="pace-row"><span>월말 예상</span><strong class="text-warn">${formatCurrency(pace.projectedExpense)}</strong></div>
+              <div class="pace-row"><span>월말 예상 잔액</span>
+                <strong class="${pace.projectedBalance >= 0 ? 'text-income' : 'text-expense'}">${formatCurrency(pace.projectedBalance)}</strong>
               </div>
-            </div>
-            <div class="pending-actions">
-              <div class="pending-input-group">
-                <input type="text" inputmode="numeric" class="form-input pending-amount"
-                       data-id="${esc(item.template.id)}"
-                       value="${thousands(item.suggestedAmount)}" />
-                <span class="unit-text">원</span>
-              </div>
-              <button class="btn-primary-sm btn-confirm-rec" data-id="${esc(item.template.id)}">확정</button>
-              <button class="btn-text btn-skip-rec" data-id="${esc(item.template.id)}">이번 달 없음</button>
-            </div>
+            ` : ''}
           </div>
-        `).join('')}
+          <p class="pace-note">
+            ${pace.isCurrent
+              ? `${pace.daysInMonth}일 중 ${pace.daysElapsed}일 지남 · 예측은 고정비 ${formatCurrency(pace.fixedAmount)}를 그대로 두고 변동비만 늘려 계산합니다.`
+              : '마감된 달의 실제 값입니다.'}
+          </p>
+        </div>
+
+        <div class="card widget-card">
+          <h3 class="widget-title">고정비와 변동비</h3>
+          <div class="fixed-var-bar">
+            <div class="fv-segment fv-fixed" style="width: ${fixedVar.fixedRatio}%"></div>
+            <div class="fv-segment fv-variable" style="width: ${fixedVar.variableRatio}%"></div>
+          </div>
+          <div class="fv-legend">
+            <div><span class="dot dot-fixed"></span> 고정 ${formatCurrency(fixedVar.fixedAmount)} (${fixedVar.fixedRatio.toFixed(0)}%)</div>
+            <div><span class="dot dot-variable"></span> 변동 ${formatCurrency(fixedVar.variableAmount)} (${fixedVar.variableRatio.toFixed(0)}%)</div>
+          </div>
+        </div>
+
+        <div class="card widget-card">
+          <h3 class="widget-title">공동과 개인</h3>
+          <div class="user-split-list">
+            <div class="split-item"><span>공동생활비</span><strong>${formatCurrency(userBreakdown.sharedAmount)}</strong></div>
+            <div class="split-item"><span><span class="who-dot who-h"></span> ${husbandName} 개인</span><strong>${formatCurrency(userBreakdown.husbandPersonalAmount)}</strong></div>
+            <div class="split-item"><span><span class="who-dot who-w"></span> ${wifeName} 개인</span><strong>${formatCurrency(userBreakdown.wifePersonalAmount)}</strong></div>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   `;
 
-  const installmentCard = installments.activePlans.length === 0 ? '' : `
-    <div class="card dash-card installment-card">
-      <div class="card-title-row">
-        <h3 class="card-title">🧾 진행 중인 할부</h3>
-        <span class="badge badge-installment">${installments.activePlans.length}건</span>
+  /* ---------- 카테고리 ---------- */
+  const categoryHtml = `
+    <section class="board-section">
+      <div class="section-head">
+        <h2 class="section-label">어디에 썼나</h2>
+        <button class="btn-text" id="btn-go-stats">통계</button>
       </div>
 
-      <div class="inst-summary">
-        <div class="inst-summary-item">
-          <span>이번 달 할부금</span>
-          <strong class="text-rose">${formatCurrency(installments.monthlyBurden)}</strong>
+      ${catBreakdown.categories.length === 0 ? `
+        <div class="card empty-state">
+          <span class="empty-icon">📝</span>
+          <p>이번 달 등록된 지출이 없습니다.</p>
         </div>
-        <div class="inst-summary-item">
-          <span>앞으로 남은 총액</span>
-          <strong>${formatCurrency(installments.remainingTotal)}</strong>
+      ` : `
+        <div class="card cat-rows">
+          ${catBreakdown.categories.slice(0, 6).map(cat => `
+            <div class="cat-row">
+              <span class="cat-row-icon">${esc(cat.icon)}</span>
+              <span class="cat-row-name">${esc(cat.name)}</span>
+              <span class="cat-row-vals">
+                <strong>${formatCurrency(cat.amount)}</strong>
+                <span class="cat-row-pct">${cat.percentage.toFixed(1)}%</span>
+              </span>
+            </div>
+          `).join('')}
         </div>
+      `}
+    </section>
+  `;
+
+  /* ---------- 할부 ---------- */
+  const installmentHtml = installments.activePlans.length === 0 ? '' : `
+    <section class="board-section">
+      <div class="section-head">
+        <h2 class="section-label">진행 중인 할부 ${installments.activePlans.length}건</h2>
+        <span class="section-note">
+          이번 달 ${formatCurrency(installments.monthlyBurden)}
+          · 앞으로 남은 총액 ${formatCurrency(installments.remainingTotal)}
+        </span>
       </div>
 
-      <div class="inst-list">
+      <div class="card inst-list">
         ${installments.activePlans.map(p => {
           const done = p.months - p.remainingCount;
           const pct = p.months > 0 ? (done / p.months) * 100 : 0;
-          const cat = categories.find(c => c.id === p.categoryId);
-
           return `
             <div class="inst-item">
               <div class="inst-head">
-                <span class="inst-name">${cat ? esc(cat.icon) + ' ' : ''}${esc(p.name)}</span>
+                <span class="inst-name">${esc(p.name)}</span>
                 <span class="inst-count">${done}/${p.months}회</span>
               </div>
               <div class="progress-track">
-                <div class="progress-fill" style="width: ${pct}%; background-color: ${cat ? esc(cat.color) : '#6366f1'}"></div>
+                <div class="progress-fill inst" style="width: ${pct}%"></div>
               </div>
               <div class="inst-meta">
                 <span>월 ${formatCurrency(p.rows[0].amount)}</span>
@@ -241,291 +400,88 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
           `;
         }).join('')}
       </div>
-    </div>
+    </section>
   `;
 
-  const paceCard = pace.isFuture ? '' : `
-    <div class="card widget-card pace-card">
-      <h4 class="widget-title">⏱️ 지출 속도</h4>
-      <div class="pace-rows">
-        <div class="pace-row">
-          <span>일평균 지출</span>
-          <strong>${formatCurrency(pace.dailyAverage)}</strong>
-        </div>
-        <div class="pace-row">
-          <span>변동비 일평균</span>
-          <strong>${formatCurrency(pace.dailyVariableAverage)}</strong>
-        </div>
-        ${pace.isCurrent ? `
-          <div class="pace-row">
-            <span>이 속도면 월말 지출</span>
-            <strong class="text-amber">${formatCurrency(pace.projectedExpense)}</strong>
-          </div>
-          <div class="pace-row">
-            <span>월말 예상 잔액</span>
-            <strong class="${pace.projectedBalance >= 0 ? 'text-emerald' : 'text-rose'}">
-              ${formatCurrency(pace.projectedBalance)}
-            </strong>
-          </div>
-        ` : `
-          <div class="pace-row">
-            <span>마감된 달</span>
-            <strong>${pace.daysInMonth}일 기준</strong>
-          </div>
-        `}
+  /* ---------- 최근 거래 ---------- */
+  const recentHtml = `
+    <section class="board-section">
+      <div class="section-head">
+        <h2 class="section-label">최근 거래</h2>
+        <button class="btn-text" id="btn-go-tx">전체보기</button>
       </div>
-      <p class="pace-note">
-        ${pace.isCurrent
-          ? `${pace.daysInMonth}일 중 ${pace.daysElapsed}일 경과 · 남은 ${pace.daysRemaining}일<br>
-             예측은 고정비 ${formatCurrency(pace.fixedAmount)}는 그대로 두고 변동비만 늘려 계산합니다.`
-          : '이미 마감된 달의 실제 값입니다.'}
-      </p>
-    </div>
+
+      ${monthTxList.length === 0 ? `
+        <div class="card empty-state">
+          <span class="empty-icon">💸</span>
+          <p>이번 달 거래 내역이 없습니다.</p>
+        </div>
+      ` : `
+        <div class="card recent-tx-list">
+          ${monthTxList.map(t => {
+            const catObj = categories.find(c => c.id === t.categoryId);
+            const isIncome = t.type === 'income';
+            const isTransfer = t.type === 'transfer';
+            return `
+              <div class="tx-row-item">
+                <div class="tx-left">
+                  <div class="tx-cat-badge">${isTransfer ? '🔄' : (catObj ? esc(catObj.icon) : '📦')}</div>
+                  <div class="tx-details">
+                    <div class="tx-memo">
+                      ${esc(t.memo) || (catObj ? esc(catObj.name) : '거래')}
+                      ${t.recurringId ? '<span class="badge badge-fixed">반복</span>' : ''}
+                      ${t.installmentId ? `<span class="badge badge-installment">할부 ${t.installmentSeq}/${t.installmentMonths}</span>` : ''}
+                    </div>
+                    <div class="tx-meta">
+                      <span>${esc(t.date)}</span>
+                      <span>${t.userId === 'husband' ? husbandName : wifeName} · ${t.sharedType === 'shared' ? '공동' : '개인'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="tx-amount ${isIncome ? 'income' : (isTransfer ? 'transfer' : 'expense')}">
+                  ${isIncome ? '+' : (isTransfer ? '' : '−')}${formatCurrency(t.amount)}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    </section>
   `;
 
   containerEl.innerHTML = `
-    <!-- Top Summary Cards -->
-    <div class="summary-grid">
-      <div class="card summary-card income-card">
-        <div class="card-header-sm">
-          <span class="card-icon">💰</span>
-          <span class="card-label">총수입</span>
-        </div>
-        <div class="card-value">${formatCurrency(summary.totalIncome)}</div>
-        <div class="card-subtext">
-          ${changeText(mom.incomeChangePct, false)}
-          <span class="basis-label">${esc(mom.basisLabel)}</span>
-        </div>
-      </div>
-
-      <div class="card summary-card expense-card">
-        <div class="card-header-sm">
-          <span class="card-icon">💸</span>
-          <span class="card-label">총지출</span>
-        </div>
-        <div class="card-value">${formatCurrency(summary.totalExpense)}</div>
-        <div class="card-subtext">
-          ${changeText(mom.expenseChangePct, true)}
-          <span class="basis-label">${esc(mom.basisLabel)}</span>
-        </div>
-      </div>
-
-      <div class="card summary-card balance-card">
-        <div class="card-header-sm">
-          <span class="card-icon">🏦</span>
-          <span class="card-label">이번 달 잔액</span>
-        </div>
-        <div class="card-value ${summary.balance >= 0 ? 'text-emerald' : 'text-rose'}">
-          ${formatCurrency(summary.balance)}
-        </div>
-        <div class="card-subtext">수입 − 지출 (이체 제외)</div>
-      </div>
-
-      <div class="card summary-card savings-card">
-        <div class="card-header-sm">
-          <span class="card-icon">📈</span>
-          <span class="card-label">가용 잔액률</span>
-        </div>
-        <div class="card-value text-indigo">${formatPercent(summary.savingsRate)}</div>
-        <div class="card-subtext">
-          ${changeText(mom.savingsRateDiff === null ? null : mom.savingsRateDiff, false)}
-          <span class="basis-label">수입 대비 남은 돈의 비율</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Dashboard Grid -->
-    <div class="dashboard-main-grid">
-      <div class="dash-column">
-        ${pendingCard}
-        ${settlementCard}
-
-        <!-- Category Breakdown -->
-        <div class="card dash-card">
-          <div class="card-title-row">
-            <h3 class="card-title">📊 이번 달 카테고리 지출</h3>
-            <button class="btn-text" id="btn-go-stats">자세히 보기 &rarr;</button>
-          </div>
-
-          ${catBreakdown.categories.length === 0 ? `
-            <div class="empty-state">
-              <span class="empty-icon">📝</span>
-              <p>이번 달 등록된 지출 거래가 없습니다.</p>
-            </div>
-          ` : `
-            <div class="progress-list">
-              ${catBreakdown.categories.map(cat => `
-                <div class="progress-item">
-                  <div class="progress-info">
-                    <div class="cat-label">
-                      <span class="cat-icon-badge">${esc(cat.icon)}</span>
-                      <span class="cat-name">${esc(cat.name)}</span>
-                    </div>
-                    <div class="cat-amount">
-                      <strong>${formatCurrency(cat.amount)}</strong>
-                      <span class="cat-pct">(${cat.percentage.toFixed(1)}%)</span>
-                    </div>
-                  </div>
-                  <div class="progress-track">
-                    <div class="progress-fill" style="width: ${cat.percentage}%; background-color: ${esc(cat.color)}"></div>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-
-        <div class="widgets-row">
-          ${paceCard}
-
-          <div class="card widget-card">
-            <h4 class="widget-title">📌 고정지출 vs 변동지출</h4>
-            <div class="fixed-var-bar">
-              <div class="fv-segment fv-fixed" style="width: ${fixedVar.fixedRatio}%"></div>
-              <div class="fv-segment fv-variable" style="width: ${fixedVar.variableRatio}%"></div>
-            </div>
-            <div class="fv-legend">
-              <div><span class="dot dot-fixed"></span> 고정비: ${formatCurrency(fixedVar.fixedAmount)} (${fixedVar.fixedRatio.toFixed(1)}%)</div>
-              <div><span class="dot dot-variable"></span> 변동비: ${formatCurrency(fixedVar.variableAmount)} (${fixedVar.variableRatio.toFixed(1)}%)</div>
-            </div>
-          </div>
-
-          <div class="card widget-card">
-            <h4 class="widget-title">👥 공동 vs 개인 지출</h4>
-            <div class="user-split-list">
-              <div class="split-item">
-                <span>👫 공동생활비</span>
-                <strong>${formatCurrency(userBreakdown.sharedAmount)}</strong>
-              </div>
-              <div class="split-item">
-                <span>👨 ${husbandName} 개인</span>
-                <strong>${formatCurrency(userBreakdown.husbandPersonalAmount)}</strong>
-              </div>
-              <div class="split-item">
-                <span>👩 ${wifeName} 개인</span>
-                <strong>${formatCurrency(userBreakdown.wifePersonalAmount)}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="dash-column">
-        ${installmentCard}
-
-        <!-- Budget Tracker -->
-        <div class="card dash-card">
-          <div class="card-title-row">
-            <h3 class="card-title">💰 예산 현황</h3>
-            <button class="btn-text" id="btn-go-settings">예산 설정 &rarr;</button>
-          </div>
-
-          ${budgetList.length === 0 ? `
-            <div class="empty-state">
-              <span class="empty-icon">⚙️</span>
-              <p>설정된 예산이 없습니다. [설정]에서 카테고리별 예산을 설정해보세요!</p>
-            </div>
-          ` : `
-            <div class="budget-list">
-              ${budgetList.map(b => `
-                <div class="budget-item">
-                  <div class="budget-header">
-                    <div class="budget-title">
-                      <span>${esc(b.icon)} ${esc(b.categoryName)}</span>
-                      <span class="badge ${b.statusBadgeClass}">${b.statusIcon} ${esc(b.statusLabel)}</span>
-                    </div>
-                    <div class="budget-vals">
-                      <strong>${formatCurrency(b.usedAmount)}</strong> / ${formatCurrency(b.budgetAmount)}
-                    </div>
-                  </div>
-                  <div class="progress-track">
-                    <div class="progress-fill ${b.status}" style="width: ${b.progressPct}%; background-color: ${esc(b.color)}"></div>
-                  </div>
-                  <div class="budget-sub-info">
-                    <span>잔여: ${formatCurrency(b.remainingAmount)}</span>
-                    <span>진행률: ${b.rawProgressPct.toFixed(1)}%</span>
-                  </div>
-                  ${b.paceMessage ? `<div class="budget-pace-note ${b.status}">${esc(b.paceMessage)}</div>` : ''}
-                </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-
-        <!-- Recent Transactions -->
-        <div class="card dash-card">
-          <div class="card-title-row">
-            <h3 class="card-title">📑 최근 거래</h3>
-            <button class="btn-text" id="btn-go-tx">전체보기 &rarr;</button>
-          </div>
-
-          ${monthTxList.length === 0 ? `
-            <div class="empty-state">
-              <span class="empty-icon">💸</span>
-              <p>최근 거래 내역이 없습니다.</p>
-            </div>
-          ` : `
-            <div class="recent-tx-list">
-              ${monthTxList.map(t => {
-                const catObj = categories.find(c => c.id === t.categoryId);
-                const isIncome = t.type === 'income';
-                const isTransfer = t.type === 'transfer';
-                const userTag = t.userId === 'husband' ? `👨 ${husbandName}` : `👩 ${wifeName}`;
-                const sharedTag = t.sharedType === 'shared' ? '공동' : '개인';
-
-                return `
-                  <div class="tx-row-item">
-                    <div class="tx-left">
-                      <div class="tx-cat-badge" style="background: ${catObj ? esc(catObj.color) + '20' : '#e2e8f0'}">
-                        ${isTransfer ? '🔄' : (catObj ? esc(catObj.icon) : '📦')}
-                      </div>
-                      <div class="tx-details">
-                        <div class="tx-memo">
-                          ${esc(t.memo) || (catObj ? esc(catObj.name) : '거래')}
-                          ${t.recurringId ? '<span class="badge badge-fixed">🔁 반복</span>' : ''}
-                        </div>
-                        <div class="tx-meta">
-                          <span class="tx-date">${esc(t.date)}</span>
-                          <span class="tx-user">${userTag} · ${sharedTag}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="tx-right">
-                      <div class="tx-amount ${isIncome ? 'income' : (isTransfer ? 'transfer' : 'expense')}">
-                        ${isIncome ? '+' : (isTransfer ? '' : '-')}${formatCurrency(t.amount)}
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `}
-        </div>
-      </div>
+    <div class="board">
+      ${heroHtml}
+      ${todoHtml}
+      ${settlementHtml}
+      ${budgetHtml}
+      ${paceHtml}
+      ${categoryHtml}
+      ${installmentHtml}
+      ${recentHtml}
     </div>
   `;
 
-  const btnStats = containerEl.querySelector('#btn-go-stats');
-  if (btnStats) btnStats.addEventListener('click', () => onNavigateTab('statistics'));
+  /* ===================== 이벤트 ===================== */
 
-  const btnSettings = containerEl.querySelector('#btn-go-settings');
-  if (btnSettings) btnSettings.addEventListener('click', () => onNavigateTab('settings'));
+  const on = (sel, fn) => {
+    const el = containerEl.querySelector(sel);
+    if (el) el.addEventListener('click', fn);
+  };
 
-  const btnTx = containerEl.querySelector('#btn-go-tx');
-  if (btnTx) btnTx.addEventListener('click', () => onNavigateTab('transactions'));
+  on('#btn-go-stats', () => onNavigateTab('statistics'));
+  on('#btn-go-settings', () => onNavigateTab('settings'));
+  on('#btn-go-tx', () => onNavigateTab('transactions'));
 
-  /* ---------- 정산 완료 / 취소 / 재정산 ---------- */
   const doSettle = async (btn) => {
     btn.disabled = true;
     await StorageManager.markSettled(currentMonthStr, settlement);
     if (refreshApp) refreshApp();
   };
-
-  const btnSettle = containerEl.querySelector('#btn-settle');
-  if (btnSettle) btnSettle.addEventListener('click', () => doSettle(btnSettle));
-
-  const btnResettle = containerEl.querySelector('#btn-resettle');
-  if (btnResettle) btnResettle.addEventListener('click', () => doSettle(btnResettle));
+  ['#btn-settle', '#btn-settle-quick', '#btn-resettle'].forEach(sel => {
+    const el = containerEl.querySelector(sel);
+    if (el) el.addEventListener('click', () => doSettle(el));
+  });
 
   const btnUnsettle = containerEl.querySelector('#btn-unsettle');
   if (btnUnsettle) {
@@ -537,7 +493,6 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
     });
   }
 
-  /* ---------- 변동 반복 거래 확정 / 건너뛰기 ---------- */
   containerEl.querySelectorAll('.btn-confirm-rec').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-id');
@@ -556,19 +511,16 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
 
   containerEl.querySelectorAll('.btn-skip-rec').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-id');
       btn.disabled = true;
-      await StorageManager.skipRecurring(id, currentMonthStr);
+      await StorageManager.skipRecurring(btn.getAttribute('data-id'), currentMonthStr);
       if (refreshApp) refreshApp();
     });
   });
 
-  // Enter 로 바로 확정
   containerEl.querySelectorAll('.pending-amount').forEach(input => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.isComposing) {
-        const id = input.getAttribute('data-id');
-        const btn = containerEl.querySelector(`.btn-confirm-rec[data-id="${id}"]`);
+        const btn = containerEl.querySelector(`.btn-confirm-rec[data-id="${input.getAttribute('data-id')}"]`);
         if (btn) btn.click();
       }
     });

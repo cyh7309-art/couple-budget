@@ -143,125 +143,137 @@
   <div class="modal-overlay" id="transaction-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-title-text">⚡ 빠른 거래 등록</h3>
+        <h3 class="modal-title" id="modal-title-text">거래 등록</h3>
         <button class="btn-modal-close" id="modal-btn-close">&times;</button>
       </div>
 
       <div class="modal-body">
-        <!-- Type Selector Tabs -->
+        <!-- 유형 -->
         <div class="modal-tabs">
-          <button class="m-tab active" id="tab-modal-expense">💸 지출</button>
-          <button class="m-tab" id="tab-modal-income">💰 수입</button>
-          <button class="m-tab" id="tab-modal-transfer">🔄 이체</button>
+          <button class="m-tab active" id="tab-modal-expense">지출</button>
+          <button class="m-tab" id="tab-modal-income">수입</button>
+          <button class="m-tab" id="tab-modal-transfer">이체</button>
         </div>
 
-        <!-- Big Touch Amount Input -->
-        <div class="amount-input-box">
-          <span class="currency-symbol">₩</span>
-          <input type="number" id="modal-input-amount" class="amount-field" placeholder="0" autofocus />
-        </div>
-
-        <!-- Date & Payment Method -->
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">📅 거래 날짜</label>
-            <input type="date" id="modal-input-date" class="form-input" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">💳 결제 수단</label>
-            <select id="modal-select-payment" class="form-select">
-              <option value="card">💳 신용/체크카드</option>
-              <option value="bank">🏦 계좌이체</option>
-              <option value="cash">💵 현금</option>
-            </select>
+        <!-- 금액 -->
+        <div class="form-group">
+          <label class="form-label" for="modal-input-amount">얼마를 썼나요</label>
+          <div class="amount-input-box">
+            <input type="number" id="modal-input-amount" class="amount-field" placeholder="0" autofocus />
+            <span class="currency-symbol">원</span>
           </div>
         </div>
 
-        <!-- Installment (할부) — 지출일 때만 표시 -->
-        <div class="form-group margin-top-sm" id="modal-group-installment">
-          <label class="form-label">🧾 할부</label>
+        <!-- 카테고리 -->
+        <div class="form-group margin-top-sm" id="modal-group-category">
+          <label class="form-label">어떤 항목인가요</label>
+          <div class="chips-grid" id="modal-category-grid"></div>
+        </div>
+
+        <!-- 누가 -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">누가 결제했나요</label>
+          <div class="btn-group-row">
+            <button class="btn-toggle active" id="modal-user-husband">남편</button>
+            <button class="btn-toggle" id="modal-user-wife">아내</button>
+          </div>
+        </div>
+
+        <!-- 공동 / 개인 -->
+        <div class="form-group margin-top-sm">
+          <label class="form-label">공동 지출인가요</label>
+          <div class="btn-group-row">
+            <button class="btn-toggle active" id="modal-shared-common">공동</button>
+            <button class="btn-toggle" id="modal-shared-husband">남편 개인</button>
+            <button class="btn-toggle" id="modal-shared-wife">아내 개인</button>
+          </div>
+        </div>
+
+        <!-- 상세 펼치기 -->
+        <button class="detail-toggle margin-top-sm" id="modal-detail-toggle"
+                aria-expanded="false" aria-controls="modal-detail">
+          <span class="detail-toggle-label">상세 입력</span>
+          <span class="detail-toggle-summary" id="modal-detail-summary"></span>
+          <svg class="detail-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <!-- 상세 -->
+        <div class="detail-panel" id="modal-detail" hidden>
           <div class="form-row-2">
-            <select id="modal-select-installment" class="form-select">
-              <option value="0">일시불</option>
-              <option value="2">2개월</option>
-              <option value="3">3개월</option>
-              <option value="4">4개월</option>
-              <option value="5">5개월</option>
-              <option value="6">6개월</option>
-              <option value="9">9개월</option>
-              <option value="10">10개월</option>
-              <option value="12">12개월</option>
-              <option value="18">18개월</option>
-              <option value="24">24개월</option>
-              <option value="36">36개월</option>
-            </select>
-            <div class="rate-field" id="modal-rate-field" style="display:none">
-              <input type="text" inputmode="decimal" id="modal-input-rate" class="form-input"
-                     placeholder="0" value="0" />
-              <span class="unit-text">% (연 수수료율)</span>
+            <div class="form-group">
+              <label class="form-label" for="modal-input-date">거래 날짜</label>
+              <input type="date" id="modal-input-date" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="modal-select-payment">결제 수단</label>
+              <select id="modal-select-payment" class="form-select">
+                <option value="card">신용/체크카드</option>
+                <option value="bank">계좌이체</option>
+                <option value="cash">현금</option>
+              </select>
             </div>
           </div>
-          <div class="installment-preview" id="modal-installment-preview"></div>
-        </div>
 
-        <!-- Account Selector (지출/수입) -->
-        <div class="form-group margin-top-sm" id="modal-group-account">
-          <label class="form-label" for="modal-select-account">🏦 사용 계좌 (선택)</label>
-          <select id="modal-select-account" class="form-select">
-            <option value="">선택 안 함</option>
-          </select>
-        </div>
-
-        <!-- Transfer Accounts (이체 전용) -->
-        <div class="form-group margin-top-sm" id="modal-group-transfer" style="display:none">
-          <label class="form-label">🔄 이체 계좌</label>
-          <div class="form-row-2">
-            <select id="modal-select-from" class="form-select">
-              <option value="">출금 계좌 선택</option>
-            </select>
-            <select id="modal-select-to" class="form-select">
-              <option value="">입금 계좌 선택</option>
+          <div class="form-group margin-top-sm" id="modal-group-account">
+            <label class="form-label" for="modal-select-account">사용 계좌 (선택)</label>
+            <select id="modal-select-account" class="form-select">
+              <option value="">선택 안 함</option>
             </select>
           </div>
-        </div>
 
-        <!-- Category Picker Chips -->
-        <div class="form-group margin-top-sm">
-          <label class="form-label">🏷️ 카테고리 선택</label>
-          <div class="chips-grid" id="modal-category-grid">
-            <!-- Injected via transactionModal.js -->
+          <div class="form-group margin-top-sm" id="modal-group-transfer" style="display:none">
+            <label class="form-label">이체 계좌</label>
+            <div class="form-row-2">
+              <select id="modal-select-from" class="form-select">
+                <option value="">출금 계좌 선택</option>
+              </select>
+              <select id="modal-select-to" class="form-select">
+                <option value="">입금 계좌 선택</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <!-- User Selector (Husband vs Wife) -->
-        <div class="form-group margin-top-sm">
-          <label class="form-label">👤 누가 거래했나요?</label>
-          <div class="btn-group-row">
-            <button class="btn-toggle active" id="modal-user-husband">👨 남편</button>
-            <button class="btn-toggle" id="modal-user-wife">👩 아내</button>
+          <div class="form-group margin-top-sm" id="modal-group-installment">
+            <label class="form-label" for="modal-select-installment">할부</label>
+            <div class="form-row-2">
+              <select id="modal-select-installment" class="form-select">
+                <option value="0">일시불</option>
+                <option value="2">2개월</option>
+                <option value="3">3개월</option>
+                <option value="4">4개월</option>
+                <option value="5">5개월</option>
+                <option value="6">6개월</option>
+                <option value="9">9개월</option>
+                <option value="10">10개월</option>
+                <option value="12">12개월</option>
+                <option value="18">18개월</option>
+                <option value="24">24개월</option>
+                <option value="36">36개월</option>
+              </select>
+              <div class="rate-field" id="modal-rate-field" style="display:none">
+                <input type="text" inputmode="decimal" id="modal-input-rate" class="form-input"
+                       placeholder="0" value="0" />
+                <span class="unit-text">% (연)</span>
+              </div>
+            </div>
+            <div class="installment-preview" id="modal-installment-preview"></div>
           </div>
-        </div>
 
-        <!-- Shared / Personal Selector -->
-        <div class="form-group margin-top-sm">
-          <label class="form-label">👫 공동 vs 개인 구분</label>
-          <div class="btn-group-row">
-            <button class="btn-toggle active" id="modal-shared-common">👫 공동생활비</button>
-            <button class="btn-toggle" id="modal-shared-husband">👨 남편 개인</button>
-            <button class="btn-toggle" id="modal-shared-wife">👩 아내 개인</button>
+          <div class="form-group margin-top-sm" id="modal-group-fixed">
+            <label class="form-label">지출 유형</label>
+            <div class="btn-group-row">
+              <button class="btn-toggle active" id="modal-btn-variable">변동지출</button>
+              <button class="btn-toggle" id="modal-btn-fixed">고정지출</button>
+            </div>
           </div>
-        </div>
 
-        <!-- Fixed vs Variable Toggle (For Expense) -->
-        <div class="form-group margin-top-sm" id="modal-group-fixed">
-          <label class="form-label">📌 지출 유형 (고정비/변동비)</label>
-          <button class="btn-fixed-toggle" id="modal-btn-fixed">🌊 변동지출 (변동)</button>
-        </div>
-
-        <!-- Memo Input -->
-        <div class="form-group margin-top-sm">
-          <label class="form-label">📝 메모</label>
-          <input type="text" id="modal-input-memo" class="form-input" placeholder="예: 스타벅스 커피, 이마트 장보기" />
+          <div class="form-group margin-top-sm">
+            <label class="form-label" for="modal-input-memo">메모</label>
+            <input type="text" id="modal-input-memo" class="form-input" placeholder="예: 이마트 장보기" />
+          </div>
         </div>
       </div>
 

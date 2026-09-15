@@ -14,22 +14,22 @@ export const DEFAULT_USERS = {
 
 export const DEFAULT_CATEGORIES = [
   // Income Categories
-  { id: 'cat_inc_salary', type: 'income', name: '급여', icon: '💵', color: '#10b981' },
-  { id: 'cat_inc_side', type: 'income', name: '부수입', icon: '📈', color: '#3b82f6' },
-  { id: 'cat_inc_biz', type: 'income', name: '사업소득', icon: '🏢', color: '#8b5cf6' },
-  { id: 'cat_inc_allowance', type: 'income', name: '용돈', icon: '🎁', color: '#ec4899' },
-  { id: 'cat_inc_refund', type: 'income', name: '환급', icon: '🔄', color: '#14b8a6' },
-  { id: 'cat_inc_other', type: 'income', name: '기타수입', icon: '✨', color: '#64748b' },
+  { id: 'cat_inc_salary', type: 'income', name: '급여', icon: '💵', color: '#007380' },
+  { id: 'cat_inc_side', type: 'income', name: '부수입', icon: '📈', color: '#007380' },
+  { id: 'cat_inc_biz', type: 'income', name: '사업소득', icon: '🏢', color: '#007380' },
+  { id: 'cat_inc_allowance', type: 'income', name: '용돈', icon: '🎁', color: '#007380' },
+  { id: 'cat_inc_refund', type: 'income', name: '환급', icon: '🔄', color: '#007380' },
+  { id: 'cat_inc_other', type: 'income', name: '기타수입', icon: '✨', color: '#007380' },
 
   // Expense Categories
-  { id: 'cat_exp_living', type: 'expense', name: '주거/공과금', icon: '🏠', color: '#6366f1' },
-  { id: 'cat_exp_food', type: 'expense', name: '식비/외식', icon: '🍚', color: '#f59e0b' },
-  { id: 'cat_exp_transport', type: 'expense', name: '교통/차량', icon: '🚗', color: '#06b6d4' },
-  { id: 'cat_exp_shopping', type: 'expense', name: '쇼핑/의류', icon: '🛍️', color: '#ec4899' },
-  { id: 'cat_exp_relation', type: 'expense', name: '관계/데이트', icon: '❤️', color: '#f43f5e' },
-  { id: 'cat_exp_growth', type: 'expense', name: '자기계발/교육', icon: '📚', color: '#8b5cf6' },
-  { id: 'cat_exp_finance', type: 'expense', name: '금융/보험', icon: '💰', color: '#10b981' },
-  { id: 'cat_exp_other', type: 'expense', name: '기타지출', icon: '📦', color: '#64748b' }
+  { id: 'cat_exp_living', type: 'expense', name: '주거/공과금', icon: '🏠', color: '#C9901F' },
+  { id: 'cat_exp_food', type: 'expense', name: '식비/외식', icon: '🍚', color: '#C9901F' },
+  { id: 'cat_exp_transport', type: 'expense', name: '교통/차량', icon: '🚗', color: '#C9901F' },
+  { id: 'cat_exp_shopping', type: 'expense', name: '쇼핑/의류', icon: '🛍️', color: '#C9901F' },
+  { id: 'cat_exp_relation', type: 'expense', name: '관계/데이트', icon: '❤️', color: '#C9901F' },
+  { id: 'cat_exp_growth', type: 'expense', name: '자기계발/교육', icon: '📚', color: '#C9901F' },
+  { id: 'cat_exp_finance', type: 'expense', name: '금융/보험', icon: '💰', color: '#C9901F' },
+  { id: 'cat_exp_other', type: 'expense', name: '기타지출', icon: '📦', color: '#C9901F' }
 ];
 
 /**
@@ -85,9 +85,9 @@ export const DEMO_BUDGETS = [
 ];
 
 export const DEMO_GOALS = [
-  { id: 'g1', name: '🏠 내 집 마련 주택자금', targetAmount: 50000000, currentAmount: 32500000, targetDate: '2027-12-31', icon: '🏠', color: '#6366f1' },
-  { id: 'g2', name: '✈️ 부부 10주년 리프레시 여행', targetAmount: 6000000, currentAmount: 4200000, targetDate: '2027-06-30', icon: '✈️', color: '#06b6d4' },
-  { id: 'g3', name: '🛡️ 우리집 비상금 펀드', targetAmount: 10000000, currentAmount: 8500000, targetDate: '2026-12-31', icon: '🛡️', color: '#10b981' }
+  { id: 'g1', name: '🏠 내 집 마련 주택자금', targetAmount: 50000000, currentAmount: 32500000, targetDate: '2027-12-31', icon: '🏠', color: '#895129' },
+  { id: 'g2', name: '✈️ 부부 10주년 리프레시 여행', targetAmount: 6000000, currentAmount: 4200000, targetDate: '2027-06-30', icon: '✈️', color: '#C9901F' },
+  { id: 'g3', name: '🛡️ 우리집 비상금 펀드', targetAmount: 10000000, currentAmount: 8500000, targetDate: '2026-12-31', icon: '🛡️', color: '#007380' }
 ];
 
 export const DEMO_ACCOUNTS = [
@@ -167,3 +167,14 @@ export const SAMPLE_GOAL_IDS = DEMO_GOALS.map(g => g.id);
 export function isSampleTransactionId(id) {
   return SAMPLE_ID_PREFIXES.some(p => String(id || '').startsWith(p));
 }
+
+/**
+ * 구버전(무지개 팔레트)에서 저장된 카테고리 색을 Honeycomb 으로 옮기기 위한 표.
+ * 도넛 차트에서 14색을 쓰면 적록색맹은 물론 정상 시야로도 구분이 안 되기 때문에
+ * 수입=청록, 지출=꿀색 두 가지로 줄였습니다.
+ */
+export const LEGACY_CATEGORY_COLORS = {
+  income: ['#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b'],
+  expense: ['#6366f1', '#f59e0b', '#06b6d4', '#ec4899', '#f43f5e', '#8b5cf6', '#10b981', '#64748b']
+};
+export const CATEGORY_COLOR = { income: '#007380', expense: '#C9901F' };

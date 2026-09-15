@@ -18,6 +18,14 @@ import {
 import { StorageManager } from '../storage.js';
 import { esc } from '../utils.js';
 
+/** CSS 토큰의 실제 색값을 읽습니다 — Chart.js 는 var() 를 해석하지 못합니다 */
+function token(name, fallback) {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch (e) { return fallback; }
+}
+
 export function renderStatisticsView(containerEl, currentMonthStr) {
   const transactions = StorageManager.getTransactions();
   const categories = StorageManager.getCategories();
@@ -30,12 +38,10 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
 
   // ✅ Chart.js 인스턴스를 추적해 탭 전환 시 반드시 파기합니다.
   //    (기존에는 계속 쌓여 메모리 누수와 "Canvas is already in use" 오류를 유발했습니다)
-  let chartInstance = null;
+  let chartInstances = [];
   function destroyChart() {
-    if (chartInstance) {
-      try { chartInstance.destroy(); } catch (e) { /* 이미 파기됨 */ }
-      chartInstance = null;
-    }
+    chartInstances.forEach(c => { try { c.destroy(); } catch (e) { /* 이미 파기됨 */ } });
+    chartInstances = [];
   }
 
   function renderTabContent() {
@@ -133,7 +139,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
       </div>
 
       <div class="card dash-card margin-top">
-        <h3 class="card-title">💡 이번 달 종합 재정 진단</h3>
+        <h3 class="card-title">이번 달 종합 재정 진단</h3>
         <ul class="insight-bullets">
           <li>📊 <strong>지출 추세:</strong> ${momText}</li>
           <li>✨ <strong>가용 잔액률:</strong> ${formatPercent(summary.savingsRate)}
@@ -165,136 +171,133 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     targetEl.innerHTML = `
       <div class="card chart-card">
         <div class="chart-header">
-          <h3 class="chart-title">📈 최근 6개월 수입 / 지출 / 저축 추이</h3>
+          <h3 class="chart-title">최근 6개월 수입 / 지출</h3>
         </div>
         <div class="chart-wrapper">
           <canvas id="canvas-trend-chart"></canvas>
         </div>
       </div>
-    `;
 
-    setTimeout(() => {
-      const ctx = targetEl.querySelector('#canvas-trend-chart');
-      if (!ctx || !window.Chart) return;
-
-      const labels = trends.map(t => t.month);
-      const incomes = trends.map(t => t.totalIncome);
-      const expenses = trends.map(t => t.totalExpense);
-      const savingsRates = trends.map(t => t.savingsRate);
-
-      chartInstance = new window.Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: '총수입 (원)',
-              data: incomes,
-              backgroundColor: 'rgba(16, 185, 129, 0.7)',
-              borderColor: '#10b981',
-              borderWidth: 1,
-              borderRadius: 6
-            },
-            {
-              label: '총지출 (원)',
-              data: expenses,
-              backgroundColor: 'rgba(244, 63, 94, 0.7)',
-              borderColor: '#f43f5e',
-              borderWidth: 1,
-              borderRadius: 6
-            },
-            {
-              label: '저축률 (%)',
-              data: savingsRates,
-              type: 'line',
-              borderColor: '#6366f1',
-              backgroundColor: '#6366f1',
-              borderWidth: 3,
-              yAxisID: 'y1',
-              tension: 0.3
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: value => (value / 10000).toLocaleString() + '만'
-              }
-            },
-            y1: {
-              position: 'right',
-              beginAtZero: true,
-              max: 100,
-              grid: { drawOnChartArea: false },
-              ticks: {
-                callback: value => value + '%'
-              }
-            }
-          }
-        }
-      });
-    }, 50);
-  }
-
-  // --- Tab 3: Category Doughnut Chart ---
-  function renderCategoryChart(targetEl) {
-    const catBreakdown = calculateCategoryBreakdown(transactions, categories, currentMonthStr);
-
-    targetEl.innerHTML = `
-      <div class="card chart-card">
+      <div class="card chart-card margin-top">
         <div class="chart-header">
-          <h3 class="chart-title">🍩 카테고리별 지출 점유율</h3>
+          <h3 class="chart-title">가용 잔액률 추이</h3>
+          <span class="chart-note">수입에서 지출을 빼고 남은 비율</span>
         </div>
-        <div class="chart-flex-container">
-          <div class="chart-wrapper-sm">
-            <canvas id="canvas-cat-chart"></canvas>
-          </div>
-          <div class="cat-details-list">
-            ${catBreakdown.categories.map(c => `
-              <div class="cat-detail-row">
-                <div class="cat-detail-left">
-                  <span class="cat-dot" style="background: ${esc(c.color)}"></span>
-                  <span>${esc(c.icon)} ${esc(c.name)}</span>
-                </div>
-                <div class="cat-detail-right">
-                  <strong>${formatCurrency(c.amount)}</strong>
-                  <span class="text-muted">(${c.percentage.toFixed(1)}%)</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
+        <div class="chart-wrapper chart-wrapper-short">
+          <canvas id="canvas-rate-chart"></canvas>
         </div>
       </div>
     `;
 
-    setTimeout(() => {
-      const ctx = targetEl.querySelector('#canvas-cat-chart');
-      if (!ctx || !window.Chart || catBreakdown.categories.length === 0) return;
+    requestAnimationFrame(() => {
+      if (!window.Chart) return noteChartUnavailable(targetEl);
+      const labels = trends.map(t => t.month);
 
-      chartInstance = new window.Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: catBreakdown.categories.map(c => c.name),
-          datasets: [{
-            data: catBreakdown.categories.map(c => c.amount),
-            backgroundColor: catBreakdown.categories.map(c => c.color),
-            borderWidth: 2,
-            borderColor: '#ffffff'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom' }
+      // ⚠️ 축을 두 개 쓰면(금액 + %) 같은 그림에서 두 척도를 비교하게 되어
+      //    읽는 사람이 반드시 오해합니다. 그래서 차트를 둘로 나눴습니다.
+      const ctx = targetEl.querySelector('#canvas-trend-chart');
+      if (ctx) {
+        chartInstances.push(new window.Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              { label: '수입', data: trends.map(t => t.totalIncome),
+                backgroundColor: token('--mark-income', '#008D9A'), borderRadius: 4 },
+              { label: '지출', data: trends.map(t => t.totalExpense),
+                backgroundColor: token('--mark-expense', '#C45F2B'), borderRadius: 4 }
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: token('--text-body', '#70604E'), boxWidth: 12 } } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: token('--text-muted', '#827260') } },
+              y: { beginAtZero: true,
+                   grid: { color: token('--border', '#E9E4C2') },
+                   ticks: { color: token('--text-muted', '#827260'),
+                            callback: v => (v / 10000).toLocaleString() + '만' } }
+            }
           }
-        }
-      });
-    }, 50);
+        }));
+      }
+
+      const rateCtx = targetEl.querySelector('#canvas-rate-chart');
+      if (rateCtx) {
+        chartInstances.push(new window.Chart(rateCtx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: '가용 잔액률',
+              data: trends.map(t => t.savingsRate),
+              borderColor: token('--color-accent', '#895129'),
+              backgroundColor: token('--color-accent', '#895129'),
+              borderWidth: 2, pointRadius: 4, tension: 0.3
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: token('--text-muted', '#827260') } },
+              y: { beginAtZero: true, max: 100,
+                   grid: { color: token('--border', '#E9E4C2') },
+                   ticks: { color: token('--text-muted', '#827260'), callback: v => v + '%' } }
+            }
+          }
+        }));
+      }
+    });
+  }
+
+  // --- Tab 3: Category Ranked Bars ---
+  function renderCategoryChart(targetEl) {
+    const catBreakdown = calculateCategoryBreakdown(transactions, categories, currentMonthStr);
+    const rows = catBreakdown.categories;
+    const max = rows.length > 0 ? rows[0].amount : 0;
+
+    // ⚠️ 도넛을 쓰지 않는 이유: 조각이 8개면 색만으로 구분이 불가능합니다.
+    //    (적록색맹 ΔE 3.0, 정상 시야로도 5.0) 순위 막대는 길이와 이름이
+    //    정체를 말해주므로 색을 하나만 써도 됩니다.
+    targetEl.innerHTML = `
+      <div class="card chart-card">
+        <div class="chart-header">
+          <h3 class="chart-title">카테고리별 지출</h3>
+          <span class="chart-note">${esc(currentMonthStr)} · 많이 쓴 순</span>
+        </div>
+
+        ${rows.length === 0 ? `
+          <div class="empty-state">
+            <span class="empty-icon">📝</span>
+            <p>이번 달 지출 기록이 없습니다.</p>
+          </div>
+        ` : `
+          <div class="rank-list">
+            ${rows.map(c => `
+              <div class="rank-row">
+                <div class="rank-head">
+                  <span class="rank-name">${esc(c.icon)} ${esc(c.name)}</span>
+                  <span class="rank-vals">
+                    <strong>${formatCurrency(c.amount)}</strong>
+                    <span class="rank-pct">${c.percentage.toFixed(1)}%</span>
+                  </span>
+                </div>
+                <div class="rank-track">
+                  <div class="rank-fill" style="width: ${max > 0 ? (c.amount / max) * 100 : 0}%"></div>
+                </div>
+                <span class="rank-count">${c.count}건</span>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="rank-total">
+            <span>합계</span>
+            <strong>${formatCurrency(catBreakdown.totalExpense)}</strong>
+          </div>
+        `}
+      </div>
+    `;
   }
 
   // --- Tab 4: User Comparison Chart ---
@@ -304,7 +307,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     targetEl.innerHTML = `
       <div class="card chart-card">
         <div class="chart-header">
-          <h3 class="chart-title">👥 공동생활비 및 부부 개인지출 비교</h3>
+          <h3 class="chart-title">공동생활비와 개인지출</h3>
         </div>
         <div class="chart-wrapper">
           <canvas id="canvas-user-chart"></canvas>
@@ -328,32 +331,41 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
 
     setTimeout(() => {
       const ctx = targetEl.querySelector('#canvas-user-chart');
-      if (!ctx || !window.Chart) return;
+      if (!window.Chart) return noteChartUnavailable(targetEl);
+      if (!ctx) return;
 
-      chartInstance = new window.Chart(ctx, {
+      chartInstances.push(new window.Chart(ctx, {
         type: 'bar',
         data: {
           labels: ['공동생활비', `${husbandName} 개인지출`, `${wifeName} 개인지출`],
           datasets: [{
             label: '지출 금액 (원)',
             data: [userBd.sharedAmount, userBd.husbandPersonalAmount, userBd.wifePersonalAmount],
-            backgroundColor: ['#6366f1', '#06b6d4', '#ec4899'],
-            borderRadius: 8
+            backgroundColor: [
+              token('--mark-shared', '#8D4A00'),
+              token('--mark-husband', '#0093A1'),
+              token('--mark-wife', '#DA9F22')
+            ],
+            borderRadius: 4
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
           scales: {
+            x: { grid: { display: false }, ticks: { color: token('--text-muted', '#827260') } },
             y: {
               beginAtZero: true,
+              grid: { color: token('--border', '#E9E4C2') },
               ticks: {
+                color: token('--text-muted', '#827260'),
                 callback: value => (value / 10000).toLocaleString() + '만'
               }
             }
           }
         }
-      });
+      }));
     }, 50);
   }
 
@@ -361,10 +373,10 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
   containerEl.innerHTML = `
     <div class="card sub-tabs-card">
       <div class="sub-tabs">
-        <button class="sub-tab-btn active" data-tab="monthly">📊 월간 종합 분석</button>
-        <button class="sub-tab-btn" data-tab="trend">📈 최근 6개월 추이</button>
-        <button class="sub-tab-btn" data-tab="category">🍩 카테고리 분포</button>
-        <button class="sub-tab-btn" data-tab="user">👥 부부/공동 비교</button>
+        <button class="sub-tab-btn active" data-tab="monthly">월간 종합</button>
+        <button class="sub-tab-btn" data-tab="trend">6개월 추이</button>
+        <button class="sub-tab-btn" data-tab="category">카테고리</button>
+        <button class="sub-tab-btn" data-tab="user">부부 비교</button>
       </div>
     </div>
 
@@ -384,4 +396,20 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
 
   // Initial tab render
   renderTabContent();
+}
+
+/**
+ * 차트 라이브러리는 인터넷에서 받아옵니다.
+ * 오프라인이거나 차단된 망이면 빈 흰 칸만 남아서 "고장난 것처럼" 보이기 때문에,
+ * 그럴 때는 캔버스 자리에 한 줄로 이유를 적어 둡니다. (숫자는 위아래 표에 이미 있습니다)
+ */
+function noteChartUnavailable(root) {
+  if (!root) return;
+  root.querySelectorAll('.chart-wrapper').forEach(w => {
+    if (w.querySelector('.chart-offline')) return;
+    const p = document.createElement('p');
+    p.className = 'chart-offline';
+    p.textContent = '그래프를 불러오지 못했습니다. 인터넷에 연결되면 다시 표시됩니다.';
+    w.appendChild(p);
+  });
 }
