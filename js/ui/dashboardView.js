@@ -434,7 +434,7 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
                     </div>
                     <div class="tx-meta">
                       <span>${esc(t.date)}</span>
-                      <span>${t.userId === 'husband' ? husbandName : wifeName} · ${t.sharedType === 'shared' ? '공동' : '개인'}</span>
+                      <span>${t.userId === 'husband' ? husbandName : wifeName}${t.type === 'expense' ? ` · ${t.sharedType === 'shared' ? '공동' : '개인'}` : ''}</span>
                     </div>
                   </div>
                 </div>

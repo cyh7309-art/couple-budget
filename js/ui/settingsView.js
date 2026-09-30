@@ -360,7 +360,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
             <select id="rec-account" class="form-select">
               <option value="">선택 안 함</option>
               ${accounts.map(a => `
-                <option value="${esc(a.id)}" ${rec && rec.accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>
+                <option value="${esc(a.id)}" data-acc-type="${esc(a.type)}" ${rec && rec.accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>
               `).join('')}
             </select>
           </div>
@@ -368,13 +368,13 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
 
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">결제자</label>
+            <label class="form-label" id="rec-user-label">${type === 'income' ? '누구의 수입' : '결제자'}</label>
             <select id="rec-user" class="form-select">
               <option value="husband" ${!rec || rec.userId === 'husband' ? 'selected' : ''}>👨 ${esc(husbandName)}</option>
               <option value="wife" ${rec && rec.userId === 'wife' ? 'selected' : ''}>👩 ${esc(wifeName)}</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group" id="rec-shared-group" ${type === 'income' ? 'style="display:none"' : ''}>
             <label class="form-label">공동/개인</label>
             <select id="rec-shared" class="form-select">
               <option value="shared" ${!rec || rec.sharedType === 'shared' ? 'selected' : ''}>👫 공동생활비</option>
@@ -484,6 +484,30 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
         editingRecurringId = null;
         render();
       });
+
+      // 수입/지출 전환 시: 카테고리·계좌 목록과 '결제자/공동·개인' 항목을 유형에 맞춥니다
+      const syncRecType = () => {
+        const t = recForm.querySelector('#rec-type').value;
+        const isIncome = t === 'income';
+        const catSel = recForm.querySelector('#rec-category');
+        Array.from(catSel.options).forEach(o => { o.hidden = o.dataset.type !== t; o.disabled = o.dataset.type !== t; });
+        if (catSel.selectedOptions[0] && catSel.selectedOptions[0].disabled) {
+          const first = Array.from(catSel.options).find(o => !o.disabled);
+          catSel.value = first ? first.value : '';
+        }
+        const accSel = recForm.querySelector('#rec-account');
+        Array.from(accSel.options).forEach(o => {
+          const off = isIncome && o.dataset.accType === 'card';
+          o.hidden = off; o.disabled = off;
+        });
+        if (accSel.selectedOptions[0] && accSel.selectedOptions[0].disabled) accSel.value = '';
+        const lbl = recForm.querySelector('#rec-user-label');
+        if (lbl) lbl.textContent = isIncome ? '누구의 수입' : '결제자';
+        const sg = recForm.querySelector('#rec-shared-group');
+        if (sg) sg.style.display = isIncome ? 'none' : '';
+      };
+      recForm.querySelector('#rec-type').addEventListener('change', syncRecType);
+      syncRecType();
 
       recForm.querySelector('#rec-save').addEventListener('click', async () => {
         const name = recForm.querySelector('#rec-name').value.trim();

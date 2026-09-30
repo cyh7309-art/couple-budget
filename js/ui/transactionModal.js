@@ -51,6 +51,11 @@ export class TransactionModal {
     this.btnVariableToggle = this.modalEl.querySelector('#modal-btn-variable');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
     this.categoryGroup = this.modalEl.querySelector('#modal-group-category');
+    this.labelAmount = this.modalEl.querySelector('#modal-label-amount');
+    this.labelUser = this.modalEl.querySelector('#modal-label-user');
+    this.sharedGroup = this.modalEl.querySelector('#modal-group-shared');
+    this.paymentGroup = this.modalEl.querySelector('#modal-group-payment');
+    this.dateRow = this.modalEl.querySelector('#modal-row-date');
     this.detailToggle = this.modalEl.querySelector('#modal-detail-toggle');
     this.detailPanel = this.modalEl.querySelector('#modal-detail');
     this.detailSummary = this.modalEl.querySelector('#modal-detail-summary');
@@ -188,14 +193,19 @@ export class TransactionModal {
 
   renderAccountOptions(accountId, fromId, toId) {
     const accounts = StorageManager.getAccounts();
-    const opts = accounts.map(a => {
+    const toOpt = (a) => {
       const icon = a.type === 'card' ? '💳' : (a.type === 'cash' ? '💵' : '🏦');
       return `<option value="${esc(a.id)}">${icon} ${esc(a.name)}</option>`;
-    }).join('');
+    };
+    const opts = accounts.map(toOpt).join('');
+
+    // 수입은 카드로 들어올 수 없으므로 은행·현금 계좌만 보여줍니다
+    const isIncome = this.selectedType === 'income';
+    const singleAccounts = isIncome ? accounts.filter(a => a.type !== 'card') : accounts;
 
     if (this.accountSelect) {
-      this.accountSelect.innerHTML = `<option value="">선택 안 함</option>${opts}`;
-      this.accountSelect.value = accountId || '';
+      this.accountSelect.innerHTML = `<option value="">선택 안 함</option>${singleAccounts.map(toOpt).join('')}`;
+      this.accountSelect.value = singleAccounts.some(a => a.id === accountId) ? accountId : '';
     }
     if (this.fromAccountSelect) {
       this.fromAccountSelect.innerHTML = `<option value="">출금 계좌 선택</option>${opts}`;
@@ -210,9 +220,10 @@ export class TransactionModal {
     if (this.accountGroup) {
       const label = this.accountGroup.querySelector('.form-label');
       if (label) {
+        const name = isIncome ? '입금 계좌' : '사용 계좌';
         label.textContent = accounts.length === 0
-          ? '🏦 사용 계좌 ([목표/계좌] 탭에서 먼저 등록하세요)'
-          : '🏦 사용 계좌 (선택)';
+          ? `🏦 ${name} ([목표/계좌] 탭에서 먼저 등록하세요)`
+          : `🏦 ${name} (선택)`;
       }
     }
   }
@@ -294,8 +305,11 @@ export class TransactionModal {
     const d = this.inputDate.value;
     parts.push(d === todayLocalStr() ? '오늘' : (d || '날짜 없음'));
 
-    const pm = this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card';
-    parts.push(pm === 'card' ? '카드' : (pm === 'bank' ? '계좌' : '현금'));
+    // 결제 수단은 지출에만 해당합니다
+    if (this.selectedType === 'expense') {
+      const pm = this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card';
+      parts.push(pm === 'card' ? '카드' : (pm === 'bank' ? '계좌' : '현금'));
+    }
 
     const months = this.getInstallmentMonths();
     if (months >= 2) parts.push(`${months}개월 할부`);
@@ -392,11 +406,31 @@ export class TransactionModal {
     this.updateAmountHint();
 
     this.modalEl.classList.add('open');
+    this.lockBodyScroll();
     setTimeout(() => this.inputAmount.focus(), 100);
+  }
+
+  /**
+   * 모달이 열려 있는 동안 뒤 화면이 따라 스크롤되지 않게 고정합니다.
+   * (iOS 에서 입력 중 배경과 하단 바가 흔들리던 원인)
+   */
+  lockBodyScroll() {
+    if (document.body.classList.contains('modal-open')) return;
+    this.savedScrollY = window.scrollY || 0;
+    document.body.style.top = `-${this.savedScrollY}px`;
+    document.body.classList.add('modal-open');
+  }
+
+  unlockBodyScroll() {
+    if (!document.body.classList.contains('modal-open')) return;
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, this.savedScrollY || 0);
   }
 
   close() {
     this.modalEl.classList.remove('open');
+    this.unlockBodyScroll();
     this.editingId = null;
     this.isSaving = false;
     this.setSaveButtonState(false);
@@ -412,8 +446,14 @@ export class TransactionModal {
     this.selectedType = type;
     // ✅ 타입이 바뀌면 카테고리 선택을 초기화 (수입 거래에 지출 카테고리가 붙던 버그)
     this.selectedCategoryId = '';
+    this.renderAccountOptions(
+      this.accountSelect ? this.accountSelect.value : '',
+      this.fromAccountSelect ? this.fromAccountSelect.value : '',
+      this.toAccountSelect ? this.toAccountSelect.value : ''
+    );
     this.updateTypeTabs();
     this.renderCategoryChips();
+    this.updateDetailSummary();
   }
 
   setUser(userId) {
@@ -436,7 +476,25 @@ export class TransactionModal {
       this.fixedGroup.style.display = this.selectedType === 'expense' ? 'block' : 'none';
     }
     const isTransfer = this.selectedType === 'transfer';
+    const isExpense = this.selectedType === 'expense';
     if (isTransfer && !this.detailOpen) this.setDetailOpen(true);
+
+    // 유형별 문구 — 수입인데 '얼마를 썼나요', '누가 결제했나요'가 나오던 문제
+    const COPY = {
+      expense:  { amount: '얼마를 썼나요',   user: '누가 결제했나요',   memo: '예: 이마트 장보기' },
+      income:   { amount: '얼마를 받았나요', user: '누구의 수입인가요', memo: '예: 9월 급여' },
+      transfer: { amount: '얼마를 옮겼나요', user: '누가 이체했나요',   memo: '예: 생활비 통장으로 이체' }
+    };
+    const copy = COPY[this.selectedType] || COPY.expense;
+    if (this.labelAmount) this.labelAmount.textContent = copy.amount;
+    if (this.labelUser) this.labelUser.textContent = copy.user;
+    if (this.inputMemo) this.inputMemo.placeholder = copy.memo;
+
+    // 공동/개인 구분과 결제 수단은 지출에만 의미가 있습니다
+    // (정산·통계는 지출의 공동/개인만 사용하고, 수입은 '누구의 수입'만 봅니다)
+    if (this.sharedGroup) this.sharedGroup.style.display = isExpense ? '' : 'none';
+    if (this.paymentGroup) this.paymentGroup.style.display = isExpense ? '' : 'none';
+    if (this.dateRow) this.dateRow.classList.toggle('is-single', !isExpense);
 
     // 이체는 카테고리 개념이 없으므로 아예 숨깁니다
     if (this.categoryGroup) {
@@ -565,7 +623,10 @@ export class TransactionModal {
       // ✅ 이체는 카테고리를 비웁니다 (직전 카테고리가 따라붙던 버그)
       categoryId: this.selectedType === 'transfer' ? '' : this.selectedCategoryId,
       sharedType: this.selectedSharedType,
-      paymentMethod: this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card',
+      // 결제 수단은 지출에만 저장합니다 (수입이 '카드'로 저장되던 문제)
+      paymentMethod: this.selectedType === 'expense'
+        ? (this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card')
+        : (this.selectedType === 'transfer' ? 'bank' : ''),
       isFixed: this.selectedType === 'expense' ? this.isFixed : false,
       memo: this.inputMemo.value.trim(),
       accountId: this.selectedType === 'transfer' ? '' : (this.accountSelect ? this.accountSelect.value : ''),

@@ -9,6 +9,7 @@ import { getPreviousMonthStr, getNextMonthStr } from './calculations.js';
 import { currentMonthLocalStr } from './utils.js';
 import { restoreSession, isAuthenticated, hasSkippedLogin, showLoginGate, onAuthChange, signOut } from './auth.js';
 import { applyTheme, watchSystemTheme } from './theme.js';
+import { initMobileViewport } from './mobileViewport.js';
 
 import { renderDashboardView } from './ui/dashboardView.js';
 import { renderTransactionsView } from './ui/transactionsView.js';
@@ -302,6 +303,7 @@ class CoupleFinanceApp {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initMobileViewport();
   window.app = new CoupleFinanceApp();
   window.coupleSignOut = async () => {
     await signOut();

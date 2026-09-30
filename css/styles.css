@@ -2802,3 +2802,55 @@ button:disabled {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ==========================================================================
+   입력 중 화면 확대 · 하단 바 흔들림 방지 (2026-09-30)
+   --------------------------------------------------------------------------
+   ① iOS Safari 는 글자 크기가 16px 미만인 입력칸을 누르면 화면을 자동 확대합니다.
+      .form-input 이 0.9rem(14.4px)이라 입력할 때마다 확대됐습니다.
+      → 모바일에서는 입력칸 글자를 16px 이상으로 둡니다.
+   ② 키보드가 올라오면 fixed 하단 바가 키보드 위로 떠오르거나 흔들립니다.
+      → 모달이 열려 있거나 키보드가 떠 있는 동안 하단 바를 숨깁니다.
+   ③ 모달 뒤의 본문이 같이 스크롤되며 흔들리던 문제
+      → 모달이 열려 있는 동안 본문을 고정합니다 (top 값은 JS 가 넣습니다).
+   ========================================================================== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body { overscroll-behavior-y: none; }
+
+@media (max-width: 768px), (pointer: coarse) {
+  input:not(.amount-field):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+body.modal-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+body.modal-open .bottom-nav,
+body.keyboard-open .bottom-nav {
+  display: none !important;
+}
+
+/* 키보드가 올라와도 모달이 실제 보이는 영역 안에 머물도록 (값은 js/mobileViewport.js) */
+.modal-overlay {
+  top: var(--vv-top, 0px);
+  bottom: auto;
+  height: var(--vv-height, 100%);
+}
+.modal-card {
+  max-height: min(90dvh, calc(var(--vv-height, 100dvh) - 2rem));
+}
+
+/* 수입·이체에서는 결제 수단이 빠지므로 날짜 칸을 한 줄로 */
+.form-row-2.is-single { grid-template-columns: minmax(0, 1fr); }
