@@ -339,11 +339,11 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
     <div class="board">
       ${heroHtml}
       ${todoHtml}
-      ${budgetHtml}
       ${paceHtml}
       ${categoryHtml}
-      ${installmentHtml}
       ${recentHtml}
+      ${budgetHtml}
+      ${installmentHtml}
     </div>
   `;
 
