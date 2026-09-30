@@ -1,0 +1,151 @@
+
+
+/* ==========================================================================
+   월 마감 리포트 (통계 › 월 마감)  — 접두어 rp-
+   차트는 CSS 막대라서 인쇄(PDF 저장)에서도 그대로 나옵니다.
+   ========================================================================== */
+
+.rp-report {
+  --rp-income-soft: color-mix(in srgb, var(--mark-income) 38%, var(--surface));
+  --rp-neutral: color-mix(in srgb, var(--text-muted) 45%, var(--surface));
+  --rp-installment: repeating-linear-gradient(135deg,
+      var(--color-accent) 0 5px,
+      color-mix(in srgb, var(--color-accent) 55%, var(--surface)) 5px 9px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.rp-report .card { min-width: 0; }
+.rp-section { display: flex; flex-direction: column; gap: 0.9rem; }
+.rp-section .card-title { margin: 0; }
+.rp-lead { color: var(--text-body); font-size: 0.9rem; margin: 0; }
+.rp-note { color: var(--text-muted); font-size: 0.8rem; line-height: 1.5; margin: 0; }
+.rp-fact { margin: 0; font-size: 0.92rem; color: var(--text-body); }
+.rp-fact b { color: var(--text-main); }
+.rp-eyebrow { margin: 0; font-size: 0.78rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.04em; }
+.rp-title { margin: 2px 0 0; font-size: 1.4rem; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em; }
+.rp-label { font-size: 0.82rem; color: var(--text-body); display: inline-flex; align-items: center; gap: 6px; }
+.rp-sub { font-size: 0.85rem; color: var(--text-body); }
+.rp-h4 { margin: 0; font-size: 0.88rem; font-weight: 700; color: var(--text-strong); display: flex; justify-content: space-between; gap: 8px; }
+.rp-h4-sum { font-weight: 600; color: var(--text-body); font-variant-numeric: tabular-nums; }
+.rp-footnote { margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.55; padding: 0 0.25rem; }
+
+.rp-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.rp-bg-income { background: var(--mark-income); }
+.rp-bg-income-soft { background: var(--rp-income-soft); }
+.rp-bg-expense { background: var(--mark-expense); }
+.rp-bg-installment { background: var(--rp-installment); }
+.rp-bg-neutral { background: var(--rp-neutral); }
+.rp-pos { color: var(--color-income); }
+.rp-neg { color: var(--color-expense); }
+
+/* Hero */
+.rp-hero { display: flex; flex-direction: column; gap: 1rem; }
+.rp-hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.rp-hero-title { min-width: 0; }
+.rp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rp-balance { display: flex; flex-direction: column; gap: 2px; }
+.rp-balance-num { font-size: clamp(2.2rem, 9vw, 3rem); line-height: 1.1; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.rp-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.rp-tile { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); padding-top: 10px; min-width: 0; }
+.rp-tile strong { font-size: 1.05rem; font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rp-callout { margin: 0; padding: 0.75rem 0.9rem; border-radius: var(--border-radius-sm); background: var(--badge-amber-bg); color: var(--text-main); font-size: 0.9rem; border: 1px solid var(--badge-amber-border); }
+.rp-callout-good { background: var(--badge-green-bg); color: var(--badge-green-fg); border-color: transparent; }
+
+/* 자동 점검 */
+.rp-findings { display: flex; flex-direction: column; }
+.rp-finding { padding: 0.9rem 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.rp-finding:first-child { border-top: 0; padding-top: 0.25rem; }
+.rp-finding-head { display: flex; align-items: flex-start; gap: 8px; }
+.rp-finding-head h4 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-main); line-height: 1.45; }
+.rp-finding-body { margin: 0; font-size: 0.87rem; color: var(--text-body); line-height: 1.55; }
+.rp-pill { flex: none; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 2px; white-space: nowrap; }
+.rp-pill-warn { background: var(--badge-rose-bg); color: var(--badge-rose-fg); }
+.rp-pill-check { background: var(--badge-amber-bg); color: var(--badge-amber-fg); }
+.rp-pill-info { background: var(--badge-sky-bg); color: var(--badge-sky-fg); }
+.rp-pill-good { background: var(--badge-green-bg); color: var(--badge-green-fg); }
+
+.rp-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rp-items li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 0.85rem; color: var(--text-body); padding: 5px 0; border-bottom: 1px dashed var(--border); }
+.rp-items li:last-child { border-bottom: 0; }
+.rp-item-label { min-width: 0; overflow-wrap: anywhere; }
+.rp-items b { flex: none; color: var(--text-main); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rp-owner { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; background: var(--surface-3); color: var(--text-strong); white-space: nowrap; }
+
+/* 수입·지출 막대 */
+.rp-duo { display: flex; flex-direction: column; gap: 12px; }
+.rp-duo-row { display: grid; grid-template-columns: 2.4rem minmax(0, 1fr); gap: 10px; align-items: center; }
+.rp-who { font-size: 0.85rem; font-weight: 600; color: var(--text-body); }
+.rp-track { position: relative; height: 24px; }
+.rp-bar { display: flex; gap: 2px; height: 100%; }
+.rp-seg { min-width: 2px; }
+.rp-bar > .rp-seg:last-child { border-radius: 0 4px 4px 0; }
+.rp-tipval { position: absolute; top: 0; height: 100%; display: flex; align-items: center; padding-left: 8px; font-size: 0.82rem; font-weight: 600; color: var(--text-main); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--text-body); }
+.rp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.rp-legend b { color: var(--text-main); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 하루 지출 */
+.rp-daily { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); gap: 0 4px; }
+.rp-yax { position: relative; height: 170px; }
+.rp-yax span { position: absolute; right: 4px; transform: translateY(50%); font-size: 0.7rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rp-plot { position: relative; height: 170px; }
+.rp-gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); }
+.rp-cols, .rp-xrow { display: grid; grid-template-columns: repeat(var(--rp-days, 30), minmax(0, 1fr)); gap: 2px; }
+.rp-cols { position: absolute; inset: 0; }
+.rp-col { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.rp-col-bar { width: 100%; max-width: 22px; display: flex; flex-direction: column-reverse; gap: 2px; min-height: 2px; }
+.rp-col-bar i { display: block; border-radius: 3px 3px 0 0; min-height: 2px; }
+.rp-xrow { grid-column: 2; margin-top: 4px; height: 16px; }
+.rp-xrow span { position: relative; }
+.rp-xrow em { position: absolute; left: 50%; transform: translateX(-50%); font-style: normal; font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; word-break: normal; font-variant-numeric: tabular-nums; }
+.rp-topdays { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 16px; font-size: 0.85rem; }
+.rp-topdays div { display: flex; flex-direction: column; min-width: 0; }
+.rp-topdays b { color: var(--text-main); font-weight: 600; }
+.rp-topdays .rp-note { overflow-wrap: anywhere; }
+
+/* 카테고리 */
+.rp-crows { display: flex; flex-direction: column; gap: 9px; }
+.rp-crow { display: grid; grid-template-columns: 5.6rem minmax(0, 1fr) 3.6rem; gap: 10px; align-items: center; }
+.rp-cname { font-size: 0.85rem; color: var(--text-body); overflow-wrap: anywhere; }
+.rp-cname.rp-focus { color: var(--text-main); font-weight: 700; }
+.rp-ctrack { height: 18px; min-width: 0; }
+.rp-cval { text-align: right; font-size: 0.84rem; color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+/* 표 */
+.rp-table-wrap { overflow-x: auto; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 300px; }
+.rp-table th, .rp-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+.rp-table th:first-child, .rp-table td:first-child { text-align: left; }
+.rp-table th { color: var(--text-body); font-weight: 600; }
+.rp-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; }
+.rp-two > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+@media (max-width: 480px) {
+  .rp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-tiles .rp-tile:last-child { grid-column: 1 / -1; }
+  .rp-crow { grid-template-columns: 4.9rem minmax(0, 1fr) 3.3rem; gap: 8px; }
+  .rp-two { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- 인쇄: PDF로 저장 ---------- */
+@media print {
+  @page { size: A4; margin: 12mm 11mm; }
+  html, body { background: #fff !important; }
+  .app-header, .sidebar, .bottom-nav, .sub-tabs-card, .rp-no-print,
+  #btn-fab-add, .modal-overlay, .cloud-badge { display: none !important; }
+  .app-body { display: block !important; }
+  .main-content { padding: 0 !important; max-width: none !important; }
+  .view-container { padding: 0 !important; }
+  .rp-report .card { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
+  .rp-report, .rp-report * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-report .rp-findings-card { break-inside: auto; page-break-inside: auto; }
+  .rp-finding { break-inside: avoid; page-break-inside: avoid; }
+}
+
+/* 통계 하위 탭이 5개가 되어 좁은 화면에서 글자가 겹치지 않도록 옆으로 밀 수 있게 합니다 */
+.sub-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.sub-tabs::-webkit-scrollbar { display: none; }
+.sub-tab-btn { flex: 1 0 auto; padding-inline: 12px; }

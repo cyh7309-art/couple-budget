@@ -48,6 +48,7 @@ export class TransactionModal {
     this.btnFixedToggle = this.modalEl.querySelector('#modal-btn-fixed');
     this.btnVariableToggle = this.modalEl.querySelector('#modal-btn-variable');
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
+    this.fixedLabel = this.modalEl.querySelector('#modal-label-fixed');
     this.categoryGroup = this.modalEl.querySelector('#modal-group-category');
     this.labelAmount = this.modalEl.querySelector('#modal-label-amount');
     this.sharedGroup = this.modalEl.querySelector('#modal-group-shared');
@@ -310,6 +311,7 @@ export class TransactionModal {
     if (months >= 2) parts.push(`${months}개월 할부`);
 
     if (this.selectedType === 'expense' && this.isFixed) parts.push('고정비');
+    if (this.selectedType === 'income' && this.isFixed) parts.push('정기 수입');
     if (this.inputMemo.value.trim()) parts.push('메모 있음');
 
     this.detailSummary.textContent = parts.join(' · ');
@@ -436,6 +438,9 @@ export class TransactionModal {
   setType(type) {
     if (this.selectedType === type) return;
     this.selectedType = type;
+    // 지출의 '고정'이 수입의 '정기'로 넘어가면 안 되므로 유형을 바꾸면 초기화합니다
+    this.isFixed = false;
+    this.updateFixedButton();
     // ✅ 타입이 바뀌면 카테고리 선택을 초기화 (수입 거래에 지출 카테고리가 붙던 버그)
     this.selectedCategoryId = '';
     this.renderAccountOptions(
@@ -459,8 +464,14 @@ export class TransactionModal {
     if (this.selectedType === 'income') this.typeIncomeBtn.classList.add('active');
     if (this.selectedType === 'transfer') this.typeTransferBtn.classList.add('active');
 
+    // 고정/변동 토글은 지출에서는 '고정지출', 수입에서는 '정기 수입'(매달 들어오는 수입)으로 씁니다.
+    // 저장 필드는 같은 isFixed 입니다. (리포트가 정기 수입 대비 지출을 계산할 때 사용)
     if (this.fixedGroup) {
-      this.fixedGroup.style.display = this.selectedType === 'expense' ? 'block' : 'none';
+      this.fixedGroup.style.display = (this.selectedType === 'expense' || this.selectedType === 'income') ? 'block' : 'none';
+      const inc = this.selectedType === 'income';
+      if (this.fixedLabel) this.fixedLabel.textContent = inc ? '수입 유형' : '지출 유형';
+      if (this.btnVariableToggle) this.btnVariableToggle.textContent = inc ? '일회성 수입' : '변동지출';
+      if (this.btnFixedToggle) this.btnFixedToggle.textContent = inc ? '정기 수입 (매달)' : '고정지출';
     }
     const isTransfer = this.selectedType === 'transfer';
     const isExpense = this.selectedType === 'expense';
@@ -610,7 +621,7 @@ export class TransactionModal {
       paymentMethod: this.selectedType === 'expense'
         ? (this.paymentMethodSelect ? this.paymentMethodSelect.value : 'card')
         : (this.selectedType === 'transfer' ? 'bank' : ''),
-      isFixed: this.selectedType === 'expense' ? this.isFixed : false,
+      isFixed: (this.selectedType === 'expense' || this.selectedType === 'income') ? this.isFixed : false,
       memo: this.inputMemo.value.trim(),
       accountId: this.selectedType === 'transfer' ? '' : (this.accountSelect ? this.accountSelect.value : ''),
       fromAccountId: this.selectedType === 'transfer' ? fromId : '',

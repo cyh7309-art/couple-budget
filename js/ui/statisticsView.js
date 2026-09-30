@@ -15,6 +15,7 @@ import {
   calculateMonthOverMonth
 } from '../calculations.js';
 import { StorageManager } from '../storage.js';
+import { renderReportView } from './reportView.js';
 import { esc } from '../utils.js';
 
 /** CSS 토큰의 실제 색값을 읽습니다 — Chart.js 는 var() 를 해석하지 못합니다 */
@@ -33,7 +34,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
   const husbandName = users.husband.name;
   const wifeName = users.wife.name;
 
-  let activeTab = 'monthly'; // 'monthly' | 'trend' | 'category' | 'user'
+  let activeTab = 'monthly'; // 'monthly' | 'trend' | 'category' | 'user' | 'report'
 
   // ✅ Chart.js 인스턴스를 추적해 탭 전환 시 반드시 파기합니다.
   //    (기존에는 계속 쌓여 메모리 누수와 "Canvas is already in use" 오류를 유발했습니다)
@@ -55,6 +56,8 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
       renderCategoryChart(contentBox);
     } else if (activeTab === 'user') {
       renderUserChart(contentBox);
+    } else if (activeTab === 'report') {
+      renderReportView(contentBox, currentMonthStr);
     }
   }
 
@@ -368,6 +371,7 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
         <button class="sub-tab-btn" data-tab="trend">6개월 추이</button>
         <button class="sub-tab-btn" data-tab="category">카테고리</button>
         <button class="sub-tab-btn" data-tab="user">부부 비교</button>
+        <button class="sub-tab-btn" data-tab="report">월 마감</button>
       </div>
     </div>
 
