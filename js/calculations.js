@@ -415,7 +415,7 @@ export function calculateHistoricalTrends(transactions, currentMonthStr, count =
 }
 
 /* ==========================================================================
-   전월 동기간(MTD) 비교 · 지출 속도 · 부부 정산
+   전월 동기간(MTD) 비교 · 지출 속도
    ========================================================================== */
 
 /**
@@ -494,76 +494,6 @@ export function calculateSpendingPace(transactions, monthStr) {
   };
 }
 
-/**
- * 부부 정산 — 공동생활비를 누가 얼마나 더 냈는지.
- *
- * @param mode 'half'  = 반반 부담
- *             'income' = 그 달 수입 비율대로 부담
- */
-export function calculateSettlement(transactions, monthStr, mode = 'half') {
-  const monthTx = filterTransactionsByMonth(transactions, monthStr);
-
-  const sharedExpenses = monthTx.filter(t => t.type === 'expense' && t.sharedType === 'shared');
-
-  let husbandPaid = 0;
-  let wifePaid = 0;
-  sharedExpenses.forEach(t => {
-    const amt = Number(t.amount || 0);
-    if (t.userId === 'wife') wifePaid += amt;
-    else husbandPaid += amt;
-  });
-  const sharedTotal = husbandPaid + wifePaid;
-
-  // 수입 비율 (income 모드용)
-  let husbandIncome = 0;
-  let wifeIncome = 0;
-  monthTx.filter(t => t.type === 'income').forEach(t => {
-    const amt = Number(t.amount || 0);
-    if (t.userId === 'wife') wifeIncome += amt;
-    else husbandIncome += amt;
-  });
-  const totalIncome = husbandIncome + wifeIncome;
-
-  let husbandShareRatio = 0.5;
-  let ratioBasis = '반반 부담 기준';
-
-  if (mode === 'income') {
-    if (totalIncome > 0) {
-      husbandShareRatio = husbandIncome / totalIncome;
-      ratioBasis = '수입 비율 기준';
-    } else {
-      ratioBasis = '수입 기록이 없어 반반 기준으로 계산';
-    }
-  }
-
-  const husbandShouldPay = sharedTotal * husbandShareRatio;
-  const wifeShouldPay = sharedTotal - husbandShouldPay;
-
-  const husbandDiff = husbandPaid - husbandShouldPay; // 양수 = 더 냄
-
-  // 1,000원 미만 차이는 정산할 필요가 없다고 봅니다
-  const settled = Math.abs(husbandDiff) < 1000;
-
-  return {
-    mode,
-    ratioBasis,
-    sharedTotal,
-    husbandPaid,
-    wifePaid,
-    husbandIncome,
-    wifeIncome,
-    husbandShareRatio,
-    wifeShareRatio: 1 - husbandShareRatio,
-    husbandShouldPay,
-    wifeShouldPay,
-    husbandDiff,
-    settled,
-    // 누가 누구에게 얼마를 보내면 되는지
-    fromUserId: settled ? null : (husbandDiff > 0 ? 'wife' : 'husband'),
-    toUserId: settled ? null : (husbandDiff > 0 ? 'husband' : 'wife'),
-    amount: Math.abs(husbandDiff)
-  };
-}
 
 /**
  * 계좌 잔액 자동 계산.

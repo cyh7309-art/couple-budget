@@ -12,7 +12,6 @@ import {
   calculateHistoricalTrends, 
   filterTransactionsByMonth,
   calculateSpendingPace,
-  calculateSettlement,
   calculateMonthOverMonth
 } from '../calculations.js';
 import { StorageManager } from '../storage.js';
@@ -67,8 +66,6 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
     const userBd = calculateUserBreakdown(transactions, currentMonthStr);
     const pace = calculateSpendingPace(transactions, currentMonthStr);
     const mom = calculateMonthOverMonth(transactions, currentMonthStr);
-    const settings = StorageManager.getSharedSettings();
-    const settlement = calculateSettlement(transactions, currentMonthStr, settings.settlementMode);
 
     const monthTx = filterTransactionsByMonth(transactions, currentMonthStr).filter(t => t.type === 'expense');
 
@@ -145,12 +142,6 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
           <li>✨ <strong>가용 잔액률:</strong> ${formatPercent(summary.savingsRate)}
               (수입 ${formatCurrency(summary.totalIncome)} 중 ${formatCurrency(summary.balance)} 남음)
               ${pace.isCurrent ? `— 이 속도면 월말 ${formatPercent(pace.projectedSavingsRate)} 예상` : ''}</li>
-          <li>🤝 <strong>부부 정산:</strong>
-              ${settlement.sharedTotal === 0
-                ? '공동생활비 기록이 없습니다.'
-                : (settlement.settled
-                    ? `부담이 균형 상태입니다 (${esc(settlement.ratioBasis)}).`
-                    : `${settlement.fromUserId === 'husband' ? husbandName : wifeName} → ${settlement.toUserId === 'husband' ? husbandName : wifeName} <strong>${formatCurrency(settlement.amount)}</strong> (${esc(settlement.ratioBasis)})`)}</li>
           <li>👫 <strong>공동/개인 비율:</strong> 공동생활비가 전체 지출의
               ${summary.totalExpense > 0 ? ((userBd.sharedAmount / summary.totalExpense) * 100).toFixed(1) : 0}%를 차지합니다.</li>
           <li>📌 <strong>고정비 vs 변동비:</strong> 고정 ${formatCurrency(fv.fixedAmount)} (${fv.fixedRatio.toFixed(1)}%),
@@ -318,12 +309,12 @@ export function renderStatisticsView(containerEl, currentMonthStr) {
             <strong>${formatCurrency(userBd.sharedAmount)}</strong>
           </div>
           <div class="u-sum-item">
-            <span>👨 ${esc(husbandName)} 총지출</span>
-            <strong>${formatCurrency(userBd.husbandTotalSpent)}</strong>
+            <span>👨 ${esc(husbandName)} 개인지출</span>
+            <strong>${formatCurrency(userBd.husbandPersonalAmount)}</strong>
           </div>
           <div class="u-sum-item">
-            <span>👩 ${esc(wifeName)} 총지출</span>
-            <strong>${formatCurrency(userBd.wifeTotalSpent)}</strong>
+            <span>👩 ${esc(wifeName)} 개인지출</span>
+            <strong>${formatCurrency(userBd.wifePersonalAmount)}</strong>
           </div>
         </div>
       </div>

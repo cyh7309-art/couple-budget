@@ -15,7 +15,7 @@ export class TransactionModal {
     this.isSaving = false;
 
     this.selectedType = 'expense';      // 'expense' | 'income' | 'transfer'
-    this.selectedUserId = 'husband';
+    this.selectedUserId = '';
     this.selectedSharedType = 'shared'; // 'shared' | 'husband' | 'wife'
     this.selectedCategoryId = '';
     this.isFixed = false;
@@ -34,8 +34,6 @@ export class TransactionModal {
     this.inputMemo = this.modalEl.querySelector('#modal-input-memo');
     this.categoryGrid = this.modalEl.querySelector('#modal-category-grid');
 
-    this.userHusbandBtn = this.modalEl.querySelector('#modal-user-husband');
-    this.userWifeBtn = this.modalEl.querySelector('#modal-user-wife');
 
     this.sharedBtn = this.modalEl.querySelector('#modal-shared-common');
     this.husbandPersonalBtn = this.modalEl.querySelector('#modal-shared-husband');
@@ -52,7 +50,6 @@ export class TransactionModal {
     this.fixedGroup = this.modalEl.querySelector('#modal-group-fixed');
     this.categoryGroup = this.modalEl.querySelector('#modal-group-category');
     this.labelAmount = this.modalEl.querySelector('#modal-label-amount');
-    this.labelUser = this.modalEl.querySelector('#modal-label-user');
     this.sharedGroup = this.modalEl.querySelector('#modal-group-shared');
     this.paymentGroup = this.modalEl.querySelector('#modal-group-payment');
     this.dateRow = this.modalEl.querySelector('#modal-row-date');
@@ -100,8 +97,6 @@ export class TransactionModal {
     this.typeIncomeBtn.addEventListener('click', () => this.setType('income'));
     this.typeTransferBtn.addEventListener('click', () => this.setType('transfer'));
 
-    this.userHusbandBtn.addEventListener('click', () => this.setUser('husband'));
-    this.userWifeBtn.addEventListener('click', () => this.setUser('wife'));
 
     this.sharedBtn.addEventListener('click', () => this.setSharedType('shared'));
     this.husbandPersonalBtn.addEventListener('click', () => this.setSharedType('husband'));
@@ -281,7 +276,7 @@ export class TransactionModal {
 
   /**
    * 상세 영역 펼치기/접기.
-   * 기본 입력은 금액·유형·카테고리·누가·구분 다섯 가지뿐이고,
+   * 기본 입력은 금액·유형·카테고리·구분 네 가지뿐이고,
    * 날짜·결제수단·계좌·할부·고정변동·메모는 여기 접혀 있습니다.
    */
   setDetailOpen(open) {
@@ -337,8 +332,6 @@ export class TransactionModal {
     this.setSaveButtonState(false);
 
     const users = StorageManager.getUsers();
-    this.userHusbandBtn.textContent = users.husband.name;
-    this.userWifeBtn.textContent = users.wife.name;
     this.husbandPersonalBtn.textContent = `${users.husband.name} 개인`;
     this.wifePersonalBtn.textContent = `${users.wife.name} 개인`;
 
@@ -353,7 +346,7 @@ export class TransactionModal {
       if (tx) {
         this.modalTitle.textContent = '거래 수정';
         this.selectedType = tx.type || 'expense';
-        this.selectedUserId = tx.userId || 'husband';
+        this.selectedUserId = tx.userId || ''; // 입력란은 없앴고 기존 값만 보존
         this.selectedSharedType = tx.sharedType || 'shared';
         this.selectedCategoryId = tx.categoryId || '';
         this.isFixed = !!tx.isFixed;
@@ -370,7 +363,7 @@ export class TransactionModal {
       this.currentEditingTx = null;
       this.modalTitle.textContent = '거래 등록';
       this.selectedType = 'expense';
-      this.selectedUserId = 'husband';
+      this.selectedUserId = '';
       this.selectedSharedType = 'shared';
       this.selectedCategoryId = '';
       this.isFixed = false;
@@ -399,7 +392,6 @@ export class TransactionModal {
     this.setDetailOpen(this.selectedType === 'transfer' || !!editingTxId);
 
     this.updateTypeTabs();
-    this.updateUserButtons();
     this.updateSharedButtons();
     this.updateFixedButton();
     this.renderCategoryChips();
@@ -456,11 +448,6 @@ export class TransactionModal {
     this.updateDetailSummary();
   }
 
-  setUser(userId) {
-    this.selectedUserId = userId;
-    this.updateUserButtons();
-  }
-
   setSharedType(sharedType) {
     this.selectedSharedType = sharedType;
     this.updateSharedButtons();
@@ -481,13 +468,12 @@ export class TransactionModal {
 
     // 유형별 문구 — 수입인데 '얼마를 썼나요', '누가 결제했나요'가 나오던 문제
     const COPY = {
-      expense:  { amount: '얼마를 썼나요',   user: '누가 결제했나요',   memo: '예: 이마트 장보기' },
-      income:   { amount: '얼마를 받았나요', user: '누구의 수입인가요', memo: '예: 9월 급여' },
-      transfer: { amount: '얼마를 옮겼나요', user: '누가 이체했나요',   memo: '예: 생활비 통장으로 이체' }
+      expense:  { amount: '얼마를 썼나요',   memo: '예: 이마트 장보기' },
+      income:   { amount: '얼마를 받았나요', memo: '예: 9월 급여' },
+      transfer: { amount: '얼마를 옮겼나요', memo: '예: 생활비 통장으로 이체' }
     };
     const copy = COPY[this.selectedType] || COPY.expense;
     if (this.labelAmount) this.labelAmount.textContent = copy.amount;
-    if (this.labelUser) this.labelUser.textContent = copy.user;
     if (this.inputMemo) this.inputMemo.placeholder = copy.memo;
 
     // 공동/개인 구분과 결제 수단은 지출에만 의미가 있습니다
@@ -511,12 +497,6 @@ export class TransactionModal {
       if (!canInstallment && this.installmentSelect) this.installmentSelect.value = '0';
     }
     this.updateInstallmentPreview();
-  }
-
-  updateUserButtons() {
-    [this.userHusbandBtn, this.userWifeBtn].forEach(b => b.classList.remove('active'));
-    if (this.selectedUserId === 'husband') this.userHusbandBtn.classList.add('active');
-    if (this.selectedUserId === 'wife') this.userWifeBtn.classList.add('active');
   }
 
   updateSharedButtons() {
@@ -619,7 +599,10 @@ export class TransactionModal {
       date: dateVal,
       type: this.selectedType,
       amount: amountVal,
-      userId: this.selectedUserId,
+      // '누가 결제했나요' 입력은 없앴습니다. 수정 시 기존 값은 유지하고,
+      // 새 거래는 개인 지출이면 그 사람, 그 외에는 비워 둡니다
+      userId: this.selectedUserId
+        || (this.selectedType === 'expense' && this.selectedSharedType !== 'shared' ? this.selectedSharedType : ''),
       // ✅ 이체는 카테고리를 비웁니다 (직전 카테고리가 따라붙던 버그)
       categoryId: this.selectedType === 'transfer' ? '' : this.selectedCategoryId,
       sharedType: this.selectedSharedType,

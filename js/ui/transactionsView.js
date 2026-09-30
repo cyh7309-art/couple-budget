@@ -50,7 +50,6 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
 
     if (filterState.type !== 'all') filtered = filtered.filter(t => t.type === filterState.type);
     if (filterState.shared !== 'all') filtered = filtered.filter(t => t.type === 'expense' && t.sharedType === filterState.shared); // 공동/개인은 지출에만 있는 구분
-    if (filterState.user !== 'all') filtered = filtered.filter(t => t.userId === filterState.user);
     if (filterState.category !== 'all') filtered = filtered.filter(t => t.categoryId === filterState.category);
 
     if (filterState.search.trim() !== '') {
@@ -110,7 +109,6 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
               const catObj = categories.find(c => c.id === t.categoryId);
               const isIncome = t.type === 'income';
               const isTransfer = t.type === 'transfer';
-              const userTag = t.userId === 'husband' ? esc(husbandName) : esc(wifeName);
 
               let sharedBadgeText = '공동';
               let sharedBadgeClass = 'badge-shared';
@@ -149,8 +147,6 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
                         </div>
                       </div>
                       <div class="tx-sub-row">
-                        <span>${userTag}</span>
-                        <span>·</span>
                         <span>${catObj ? esc(catObj.name) : (isTransfer ? '계좌이체' : '미분류')}</span>
                         ${t.type === 'expense' && t.paymentMethod ? `<span>·</span><span>💳 ${t.paymentMethod === 'card' ? '카드' : (t.paymentMethod === 'bank' ? '계좌' : '현금')}</span>` : ''}
                         ${isTransfer && (t.fromAccountId || t.toAccountId)
@@ -256,14 +252,6 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
         </div>
 
         <div class="filter-group">
-          <select id="select-user" class="form-select">
-            <option value="all" ${selected('all', filterState.user)}>모든 작성자</option>
-            <option value="husband" ${selected('husband', filterState.user)}>👨 ${esc(husbandName)}</option>
-            <option value="wife" ${selected('wife', filterState.user)}>👩 ${esc(wifeName)}</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
           <select id="select-category" class="form-select">
             <option value="all" ${selected('all', filterState.category)}>모든 카테고리</option>
             ${categories.map(c => `<option value="${esc(c.id)}" ${selected(c.id, filterState.category)}>${esc(c.icon)} ${esc(c.name)}</option>`).join('')}
@@ -286,9 +274,6 @@ export function renderTransactionsView(containerEl, currentMonthStr, openEditMod
   });
   containerEl.querySelector('#select-shared').addEventListener('change', (e) => {
     filterState.shared = e.target.value; renderList();
-  });
-  containerEl.querySelector('#select-user').addEventListener('change', (e) => {
-    filterState.user = e.target.value; renderList();
   });
   containerEl.querySelector('#select-category').addEventListener('change', (e) => {
     filterState.category = e.target.value; renderList();

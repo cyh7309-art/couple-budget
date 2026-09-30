@@ -3,7 +3,7 @@
  *
  * 구성 원칙
  *  1. 이번 달에 남은 돈 하나를 가장 크게 둔다. 수입·지출은 그 아래 작게.
- *  2. 손이 가야 하는 일(금액 확인·정산)은 큰 카드가 아니라 한 줄짜리 행으로 위에 모은다.
+ *  2. 손이 가야 하는 일(금액 확인)은 큰 카드가 아니라 한 줄짜리 행으로 위에 모은다.
  *  3. 구역 제목에는 이모지를 쓰지 않는다. 카테고리 이모지는 데이터라 남긴다.
  */
 
@@ -13,7 +13,6 @@ import {
   calculateMonthlySummary,
   calculateMonthOverMonth,
   calculateSpendingPace,
-  calculateSettlement,
   calculateCategoryBreakdown,
   calculateBudgetProgress,
   calculateFixedVsVariable,
@@ -28,13 +27,10 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
   const categories = StorageManager.getCategories();
   const budgets = StorageManager.getBudgets();
   const users = StorageManager.getUsers();
-  const settings = StorageManager.getSharedSettings();
 
   const summary = calculateMonthlySummary(transactions, currentMonthStr);
   const mom = calculateMonthOverMonth(transactions, currentMonthStr);
   const pace = calculateSpendingPace(transactions, currentMonthStr);
-  const settlement = calculateSettlement(transactions, currentMonthStr, settings.settlementMode);
-  const settledRecord = StorageManager.getSettlementFor(currentMonthStr);
   const pendingRecurring = StorageManager.getPendingRecurring(currentMonthStr);
   const installments = calculateInstallments(transactions, currentMonthStr);
 
@@ -50,14 +46,6 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
 
   const husbandName = esc(users.husband.name);
   const wifeName = esc(users.wife.name);
-  const nameOf = (id) => (id === 'wife' ? wifeName : husbandName);
-
-  const settledDrift = settledRecord
-    ? Math.round(settlement.sharedTotal) - Math.round(settledRecord.sharedTotal || 0)
-    : 0;
-  const recentSettlements = StorageManager.getSettlements()
-    .filter(x => x.month !== currentMonthStr)
-    .slice(0, 3);
 
   /* ---------- 히어로 ---------- */
   const expenseShare = summary.totalIncome > 0
@@ -142,112 +130,10 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
     `);
   });
 
-  const settleInTodo = settlement.sharedTotal > 0 && !settledRecord && !settlement.settled;
-  if (settleInTodo) {
-    todoItems.push(`
-      <div class="todo-row">
-        <div class="todo-icon accent" aria-hidden="true">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"></path><path d="M21 3 9 15"></path><path d="M8 21H3v-5"></path><path d="m3 21 12-12"></path></svg>
-        </div>
-        <div class="todo-text">
-          <span class="todo-title">${nameOf(settlement.fromUserId)} → ${nameOf(settlement.toUserId)} 정산</span>
-          <span class="todo-meta">${formatCurrency(settlement.amount)} · ${esc(settlement.ratioBasis)}</span>
-        </div>
-        <div class="todo-action">
-          <button class="btn-primary-sm" id="btn-settle-quick">완료로 표시</button>
-        </div>
-      </div>
-    `);
-  }
-
   const todoHtml = todoItems.length === 0 ? '' : `
     <section class="board-section">
       <h2 class="section-label">처리할 일</h2>
       <div class="todo-list">${todoItems.join('')}</div>
-    </section>
-  `;
-
-  /* ---------- 정산 ---------- */
-  const settlementHtml = settlement.sharedTotal === 0 ? '' : `
-    <section class="board-section">
-      <div class="section-head">
-        <h2 class="section-label">부부 정산</h2>
-        <span class="section-note">${esc(settlement.ratioBasis)}</span>
-      </div>
-
-      <div class="card settlement-card">
-        ${settledRecord ? `
-          <div class="settle-headline settled">
-            <strong>${esc(currentMonthStr)} 정산 완료</strong>
-            ${settledRecord.amount > 0
-              ? ` — ${nameOf(settledRecord.fromUserId)} → ${nameOf(settledRecord.toUserId)}
-                 <strong>${formatCurrency(settledRecord.amount)}</strong>`
-              : ' — 정산할 금액이 없었습니다'}
-            <div class="settle-meta">${esc(String(settledRecord.settledAt || '').slice(0, 10))} 에 표시함</div>
-          </div>
-
-          ${settledDrift !== 0 ? `
-            <div class="settle-drift">
-              정산 완료 이후 공동생활비가 <strong>${formatCurrency(Math.abs(settledDrift))}</strong>
-              ${settledDrift > 0 ? '늘었습니다' : '줄었습니다'}.
-              지금 기준으로는
-              ${settlement.settled ? '정산할 금액이 없습니다' : `${nameOf(settlement.fromUserId)} → ${nameOf(settlement.toUserId)} ${formatCurrency(settlement.amount)} 입니다`}.
-              <button class="btn-secondary-sm" id="btn-resettle">현재 기준으로 다시 정산</button>
-            </div>
-          ` : ''}
-
-          <button class="btn-text settle-undo" id="btn-unsettle">정산 완료 취소</button>
-        ` : `
-          <div class="settle-headline">
-            ${settlement.settled
-              ? '정산할 금액이 없습니다. 부담이 균형을 이루고 있어요.'
-              : `<strong>${nameOf(settlement.fromUserId)}</strong> 님이
-                 <strong>${nameOf(settlement.toUserId)}</strong> 님에게
-                 <strong class="settle-amount">${formatCurrency(settlement.amount)}</strong> 보내면 정산 완료`}
-          </div>
-          ${(settlement.settled || settleInTodo) ? '' : '<button class="btn-primary-sm settle-done-btn" id="btn-settle">정산 완료로 표시</button>'}
-        `}
-
-        <div class="settle-grid">
-          <div class="settle-row">
-            <span>공동생활비 총액</span>
-            <strong>${formatCurrency(settlement.sharedTotal)}</strong>
-          </div>
-          <div class="settle-row">
-            <span><span class="who-dot who-h"></span> ${husbandName} 실제 결제</span>
-            <strong>${formatCurrency(settlement.husbandPaid)}</strong>
-            <span class="settle-should">부담해야 할 몫 ${formatCurrency(settlement.husbandShouldPay)}</span>
-          </div>
-          <div class="settle-row">
-            <span><span class="who-dot who-w"></span> ${wifeName} 실제 결제</span>
-            <strong>${formatCurrency(settlement.wifePaid)}</strong>
-            <span class="settle-should">부담해야 할 몫 ${formatCurrency(settlement.wifeShouldPay)}</span>
-          </div>
-        </div>
-
-        <div class="settle-bar">
-          <div class="settle-seg settle-h" style="width: ${(settlement.husbandPaid / settlement.sharedTotal) * 100}%"></div>
-          <div class="settle-seg settle-w" style="width: ${(settlement.wifePaid / settlement.sharedTotal) * 100}%"></div>
-        </div>
-        <div class="settle-legend">
-          <span><span class="dot dot-h"></span> ${husbandName} 결제 비중</span>
-          <span><span class="dot dot-w"></span> ${wifeName} 결제 비중</span>
-        </div>
-
-        ${recentSettlements.length > 0 ? `
-          <div class="settle-history">
-            <div class="settle-history-title">지난 정산 기록</div>
-            ${recentSettlements.map(h => `
-              <div class="settle-history-row">
-                <span>${esc(h.month)}</span>
-                <span>${h.amount > 0
-                  ? `${nameOf(h.fromUserId)} → ${nameOf(h.toUserId)} ${formatCurrency(h.amount)}`
-                  : '정산 없음'}</span>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-      </div>
     </section>
   `;
 
@@ -434,7 +320,7 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
                     </div>
                     <div class="tx-meta">
                       <span>${esc(t.date)}</span>
-                      <span>${t.userId === 'husband' ? husbandName : wifeName}${t.type === 'expense' ? ` · ${t.sharedType === 'shared' ? '공동' : '개인'}` : ''}</span>
+                      ${t.type === 'expense' ? `<span>${t.sharedType === 'shared' ? '공동' : (t.sharedType === 'wife' ? wifeName : husbandName) + ' 개인'}</span>` : ''}
                     </div>
                   </div>
                 </div>
@@ -453,7 +339,6 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
     <div class="board">
       ${heroHtml}
       ${todoHtml}
-      ${settlementHtml}
       ${budgetHtml}
       ${paceHtml}
       ${categoryHtml}
@@ -472,26 +357,6 @@ export function renderDashboardView(containerEl, currentMonthStr, onNavigateTab,
   on('#btn-go-stats', () => onNavigateTab('statistics'));
   on('#btn-go-settings', () => onNavigateTab('settings'));
   on('#btn-go-tx', () => onNavigateTab('transactions'));
-
-  const doSettle = async (btn) => {
-    btn.disabled = true;
-    await StorageManager.markSettled(currentMonthStr, settlement);
-    if (refreshApp) refreshApp();
-  };
-  ['#btn-settle', '#btn-settle-quick', '#btn-resettle'].forEach(sel => {
-    const el = containerEl.querySelector(sel);
-    if (el) el.addEventListener('click', () => doSettle(el));
-  });
-
-  const btnUnsettle = containerEl.querySelector('#btn-unsettle');
-  if (btnUnsettle) {
-    btnUnsettle.addEventListener('click', async () => {
-      if (!confirm(`${currentMonthStr} 정산 완료 표시를 취소하시겠습니까?`)) return;
-      btnUnsettle.disabled = true;
-      await StorageManager.unmarkSettled(currentMonthStr);
-      if (refreshApp) refreshApp();
-    });
-  }
 
   containerEl.querySelectorAll('.btn-confirm-rec').forEach(btn => {
     btn.addEventListener('click', async () => {

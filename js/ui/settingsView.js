@@ -100,16 +100,7 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           <span class="badge badge-shared">두 기기 모두</span>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">정산 기준</label>
-          <select id="select-settlement" class="form-select">
-            <option value="half" ${sharedSettings.settlementMode === 'half' ? 'selected' : ''}>반반 부담 (50:50)</option>
-            <option value="income" ${sharedSettings.settlementMode === 'income' ? 'selected' : ''}>수입 비율대로 부담</option>
-          </select>
-          <p class="card-desc">공동생활비를 누가 얼마나 부담해야 하는지 계산하는 기준입니다.</p>
-        </div>
-
-        <label class="check-row margin-top-sm">
+        <label class="check-row">
           <input type="checkbox" id="check-card-settle" ${sharedSettings.cardSettlementEnabled !== false ? 'checked' : ''} />
           <span>카드 결제일이 지나면 <strong>결제 통장 → 카드</strong> 이체를 자동으로 만들기</span>
         </label>
@@ -367,13 +358,6 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
         </div>
 
         <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label" id="rec-user-label">${type === 'income' ? '누구의 수입' : '결제자'}</label>
-            <select id="rec-user" class="form-select">
-              <option value="husband" ${!rec || rec.userId === 'husband' ? 'selected' : ''}>👨 ${esc(husbandName)}</option>
-              <option value="wife" ${rec && rec.userId === 'wife' ? 'selected' : ''}>👩 ${esc(wifeName)}</option>
-            </select>
-          </div>
           <div class="form-group" id="rec-shared-group" ${type === 'income' ? 'style="display:none"' : ''}>
             <label class="form-label">공동/개인</label>
             <select id="rec-shared" class="form-select">
@@ -416,11 +400,6 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
     });
 
     /* --- 공유 설정 (클라우드 동기화) --- */
-    $('#select-settlement').addEventListener('change', async (e) => {
-      await StorageManager.saveSharedSettings({ settlementMode: e.target.value });
-      refreshApp();
-    });
-
     $('#check-card-settle').addEventListener('change', async (e) => {
       await StorageManager.saveSharedSettings({ cardSettlementEnabled: e.target.checked });
       refreshApp();
@@ -501,8 +480,6 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           o.hidden = off; o.disabled = off;
         });
         if (accSel.selectedOptions[0] && accSel.selectedOptions[0].disabled) accSel.value = '';
-        const lbl = recForm.querySelector('#rec-user-label');
-        if (lbl) lbl.textContent = isIncome ? '누구의 수입' : '결제자';
         const sg = recForm.querySelector('#rec-shared-group');
         if (sg) sg.style.display = isIncome ? 'none' : '';
       };
@@ -530,7 +507,8 @@ export function renderSettingsView(containerEl, currentMonthStr, refreshApp) {
           type,
           categoryId,
           accountId: recForm.querySelector('#rec-account').value,
-          userId: recForm.querySelector('#rec-user').value,
+          // 결제자 입력은 없앴습니다. 개인 지출이면 그 사람으로 둡니다
+          userId: (() => { const sh = recForm.querySelector('#rec-shared').value; return (type === 'expense' && sh !== 'shared') ? sh : ''; })(),
           sharedType: recForm.querySelector('#rec-shared').value,
           dayOfMonth: Math.min(Math.max(Number(recForm.querySelector('#rec-day').value) || 1, 1), 31),
           amountMode: recForm.querySelector('#rec-amount-mode').value === 'variable' ? 'variable' : 'fixed',
