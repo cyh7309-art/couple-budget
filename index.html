@@ -37,6 +37,7 @@
   <!-- Application Stylesheet -->
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="css/report.css" />
+  <link rel="stylesheet" href="css/challenge.css" />
 </head>
 <body>
 
@@ -57,6 +58,8 @@
       <button class="btn-month-nav" id="btn-next-month" title="다음 달">&gt;</button>
       <button class="btn-today-chip" id="btn-reset-today">오늘</button>
     </div>
+    <!-- '부부의 도전'은 월 단위 화면이 아니라서 월 선택 대신 제목을 보여줍니다 -->
+    <div class="header-tab-title" id="header-tab-title" hidden>부부의 도전</div>
 
     <div class="header-right">
       <button class="btn-header-add" id="btn-header-quick-add">+ 거래 입력</button>
@@ -83,6 +86,10 @@
         <button class="nav-item" data-tab="goals">
           <span class="nav-icon">🎯</span>
           <span class="nav-text">재정 목표/계좌</span>
+        </button>
+        <button class="nav-item" data-tab="challenge">
+          <span class="nav-icon">💪</span>
+          <span class="nav-text">부부의 도전</span>
         </button>
         <button class="nav-item" data-tab="settings">
           <span class="nav-icon">⚙️</span>
@@ -118,6 +125,11 @@
       <span class="b-nav-label">거래</span>
     </button>
     
+    <button class="b-nav-item" data-tab="statistics">
+      <span class="b-nav-icon">📊</span>
+      <span class="b-nav-label">통계</span>
+    </button>
+
     <!-- Floating Center Action Button -->
     <button class="b-nav-item fab-center-item" id="btn-fab-add">
       <div class="fab-circle">
@@ -126,9 +138,9 @@
       <span class="b-nav-label">기록</span>
     </button>
 
-    <button class="b-nav-item" data-tab="statistics">
-      <span class="b-nav-icon">📊</span>
-      <span class="b-nav-label">통계</span>
+    <button class="b-nav-item" data-tab="challenge">
+      <span class="b-nav-icon">💪</span>
+      <span class="b-nav-label">도전</span>
     </button>
     <button class="b-nav-item" data-tab="goals">
       <span class="b-nav-icon">🎯</span>

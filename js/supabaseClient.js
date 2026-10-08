@@ -275,6 +275,43 @@ export class SupabaseSyncEngine {
       s.from('app_settings').upsert([{ id: 'household', data }]));
   }
 
+  // --- 부부의 도전 (식단·운동·몸무게 기록) ---
+  //
+  // 새 테이블을 만들지 않고 app_settings(id, data jsonb)에 'chl_' 로 시작하는 행으로 넣습니다.
+  // 이 테이블은 이미 RLS·실시간이 켜져 있어서, SQL 을 다시 실행하지 않아도 바로 동기화됩니다.
+  // (공유 설정은 id = 'household' 한 행만 읽으므로 서로 섞이지 않습니다)
+  static async fetchChallengeLogs() {
+    // PostgREST 는 한 번에 최대 1000행만 돌려줍니다. 잘린 결과를 "전부"로 믿으면
+    // 병합 단계가 나머지 기록을 '상대가 지운 것'으로 오해하므로 끝까지 읽습니다.
+    const PAGE = 1000;
+    const all = [];
+    for (let from = 0; ; from += PAGE) {
+      const rows = await runRead('fetchChallengeLogs', s =>
+        s.from('app_settings').select('*').like('id', 'chl_%').order('id').range(from, from + PAGE - 1));
+      if (!Array.isArray(rows)) return null;
+      all.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    return all
+      .filter(r => r && String(r.id).startsWith('chl_') && r.data && typeof r.data === 'object')
+      .map(r => ({ ...r.data, id: r.id }));
+  }
+
+  static async saveChallengeLogs(list) {
+    if (!list || list.length === 0) return true;
+    return runWrite('saveChallengeLogs', s =>
+      s.from('app_settings').upsert(list.map(log => ({ id: log.id, data: log }))));
+  }
+
+  static async deleteChallengeLog(id) {
+    return runWrite('deleteChallengeLog', s => s.from('app_settings').delete().eq('id', id));
+  }
+
+  static async deleteAllChallengeLogs() {
+    return runWrite('deleteAllChallengeLogs', s =>
+      s.from('app_settings').delete().like('id', 'chl_%'));
+  }
+
   // --- Categories ---
   static async fetchCategories() {
     return runRead('fetchCategories', s => s.from('categories').select('*'));

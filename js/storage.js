@@ -19,6 +19,10 @@ import {
 import { SupabaseSyncEngine } from './supabaseClient.js';
 import { calculateCardBilling, buildInstallmentSchedule } from './calculations.js';
 import { todayLocalStr } from './utils.js';
+import {
+  challengeLogId, isChallengeLogId, isEmptyLog, emptyLog, normalizeChallengeSettings,
+  generateDemoChallengeLogs, demoChallengeSettings
+} from './challenge.js';
 
 const STORAGE_KEYS = {
   USERS: 'couple_finance_users',
@@ -29,6 +33,7 @@ const STORAGE_KEYS = {
   ACCOUNTS: 'couple_finance_accounts',
   RECURRING: 'couple_finance_recurring',
   SETTLEMENTS: 'couple_finance_settlements',
+  CHALLENGE_LOGS: 'couple_finance_challenge_logs',   // 부부의 도전 (식단·운동·몸무게)
   SETTINGS: 'couple_finance_settings',              // 기기별 (테마 등)
   SHARED_SETTINGS: 'couple_finance_shared_settings', // 부부 공유 (정산 기준 등)
   QUEUE: 'couple_finance_sync_queue',
@@ -74,6 +79,9 @@ function writeJSON(key, value) {
   }
 }
 
+/** 클라우드로 전송 중인 '부부의 도전' 기록 id (설명은 _pushChallengeLog 참고) */
+const challengeInFlight = new Set();
+
 /** 병합 시 어느 쪽이 최신인지 판단 */
 function stampOf(item) {
   return item.updatedAt || item.createdAt || '';
@@ -113,6 +121,9 @@ export class StorageManager {
     }
     if (localStorage.getItem(STORAGE_KEYS.SHARED_SETTINGS) === null) {
       writeJSON(STORAGE_KEYS.SHARED_SETTINGS, DEFAULT_SHARED_SETTINGS);
+    }
+    if (localStorage.getItem(STORAGE_KEYS.CHALLENGE_LOGS) === null) {
+      writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, isDemoMode() ? generateDemoChallengeLogs(todayLocalStr()) : []);
     }
     this.migrateCategoryColors();
 
@@ -181,6 +192,10 @@ export class StorageManager {
           ok = op.op === 'delete'
             ? await SupabaseSyncEngine.deleteRecurring(op.id)
             : await SupabaseSyncEngine.saveRecurring([op.data]);
+        } else if (op.table === 'challenge_logs') {
+          ok = op.op === 'delete'
+            ? await SupabaseSyncEngine.deleteChallengeLog(op.id)
+            : await SupabaseSyncEngine.saveChallengeLogs([op.data]);
         } else {
           ok = true; // 알 수 없는 작업은 버립니다
         }
@@ -331,6 +346,9 @@ export class StorageManager {
     } else {
       await SupabaseSyncEngine.saveAppSettings(this.getSharedSettings());
     }
+
+    // 12) 부부의 도전 기록
+    await this._mergeChallengeLogs(syncedOnce);
 
     localStorage.setItem(STORAGE_KEYS.SYNCED_ONCE, '1');
     return 'synced';
@@ -982,6 +1000,113 @@ export class StorageManager {
     return created;
   }
 
+  /* ===================== 부부의 도전 (식단 · 운동 · 몸무게) ===================== */
+
+  static getChallengeLogs() {
+    const list = readJSON(STORAGE_KEYS.CHALLENGE_LOGS, []);
+    return Array.isArray(list) ? list.filter(l => l && l.id && l.userId && l.date) : [];
+  }
+
+  static getChallengeLog(userId, date) {
+    return this.getChallengeLogs().find(l => l.userId === userId && l.date === date) || null;
+  }
+
+  /** 촬영일·결혼식·목표 몸무게 (부부 공유 설정 안에 들어 있습니다) */
+  static getChallengeSettings() {
+    const saved = this.getSharedSettings().challenge;
+    if (!saved && isDemoMode()) return demoChallengeSettings(todayLocalStr());
+    return normalizeChallengeSettings(saved);
+  }
+
+  static async saveChallengeSettings(patch) {
+    const next = normalizeChallengeSettings({ ...this.getChallengeSettings(), ...patch });
+    await this.saveSharedSettings({ challenge: next });
+    return next;
+  }
+
+  /**
+   * 한 사람의 하루 기록을 고칩니다.
+   * @param mutate (log) => 바뀐 log. 기록이 없던 날은 빈 기록을 넘겨줍니다.
+   * 내용이 전부 비면 그날 기록 자체를 지웁니다.
+   */
+  static async updateChallengeLog(userId, date, mutate) {
+    const list = this.getChallengeLogs();
+    const id = challengeLogId(userId, date);
+    const idx = list.findIndex(l => l.id === id);
+    const now = new Date().toISOString();
+
+    const current = idx !== -1 ? list[idx] : emptyLog(userId, date);
+    const next = {
+      ...mutate({
+        ...current,
+        meals: Array.isArray(current.meals) ? current.meals.slice() : [],
+        workouts: Array.isArray(current.workouts) ? current.workouts.slice() : []
+      }),
+      id, userId, date,
+      createdAt: current.createdAt || now,
+      updatedAt: now
+    };
+
+    if (isEmptyLog(next)) {
+      if (idx === -1) return null;
+      list.splice(idx, 1);
+      writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, list);
+      if (isDemoMode()) return null;
+      const ok = await SupabaseSyncEngine.deleteChallengeLog(id);
+      if (!ok) this._enqueue({ table: 'challenge_logs', op: 'delete', id });
+      return null;
+    }
+
+    if (idx !== -1) list[idx] = next; else list.push(next);
+    writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, list);
+    await this._pushChallengeLog(next);
+    return next;
+  }
+
+  /**
+   * 전송 중인 기록의 id. 클라우드에 닿기 전에 병합이 먼저 돌면 "클라우드에 없는 로컬 기록"을
+   * 상대가 지운 것으로 오해해 방금 적은 내용을 지워버릴 수 있어서, 그동안은 병합에서 지킵니다.
+   */
+  static async _pushChallengeLog(log) {
+    if (isDemoMode()) return true;
+    challengeInFlight.add(log.id);
+    let ok = false;
+    try {
+      ok = await SupabaseSyncEngine.saveChallengeLogs([log]);
+    } finally {
+      challengeInFlight.delete(log.id);
+    }
+    if (!ok) this._enqueue({ table: 'challenge_logs', op: 'upsert', id: log.id, data: log });
+    return ok;
+  }
+
+  /** 클라우드 기록과 id + updatedAt 기준으로 병합 (거래와 같은 규칙) */
+  static async _mergeChallengeLogs(syncedOnce) {
+    const cloud = await SupabaseSyncEngine.fetchChallengeLogs();
+    if (!Array.isArray(cloud)) return false;        // 읽기 실패 — 로컬을 건드리지 않습니다
+
+    const local = this.getChallengeLogs();
+    const map = new Map();
+    cloud.filter(l => isChallengeLogId(l.id) && l.userId && l.date).forEach(l => map.set(l.id, l));
+
+    const toPush = [];
+    local.forEach(l => {
+      const cloudVersion = map.get(l.id);
+      if (!cloudVersion) {
+        // 클라우드에 없는 로컬 기록: 아직 올라가는 중이거나 첫 동기화면 살리고,
+        // 그 외에는 상대 기기에서 지운 것으로 봅니다.
+        if (challengeInFlight.has(l.id)) map.set(l.id, l);
+        else if (!syncedOnce) { map.set(l.id, l); toPush.push(l); }
+      } else if (stampOf(l) > stampOf(cloudVersion)) {
+        map.set(l.id, l);
+      }
+    });
+
+    writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, Array.from(map.values()));
+    for (const l of toPush) await this._pushChallengeLog(l);
+    return true;
+  }
+
   /* ===================== 정리 / 초기화 / 백업 ===================== */
 
   /** 과거 버전이 심어둔 샘플 데이터를 로컬 + 클라우드에서 제거 */
@@ -1012,6 +1137,7 @@ export class StorageManager {
       await SupabaseSyncEngine.deleteAllAccounts();
       await SupabaseSyncEngine.deleteAllRecurring();
       await SupabaseSyncEngine.deleteAllSettlements();
+      await SupabaseSyncEngine.deleteAllChallengeLogs();
     }
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
     _demoMode = null;
@@ -1030,6 +1156,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.ACCOUNTS, DEMO_ACCOUNTS);
     writeJSON(STORAGE_KEYS.RECURRING, DEMO_RECURRING);
     writeJSON(STORAGE_KEYS.SETTLEMENTS, []);
+    writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, generateDemoChallengeLogs(todayLocalStr()));
     this._setQueue([]);
   }
 
@@ -1042,6 +1169,7 @@ export class StorageManager {
     writeJSON(STORAGE_KEYS.ACCOUNTS, []);
     writeJSON(STORAGE_KEYS.RECURRING, []);
     writeJSON(STORAGE_KEYS.SETTLEMENTS, []);
+    writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, []);
     localStorage.removeItem(STORAGE_KEYS.SYNCED_ONCE);
   }
 
@@ -1055,6 +1183,7 @@ export class StorageManager {
       accounts: this.getAccounts(),
       recurring: this.getRecurring(),
       settlements: this.getSettlements(),
+      challengeLogs: this.getChallengeLogs(),
       settings: this.getDeviceSettings(),
       sharedSettings: this.getSharedSettings(),
       exportedAt: new Date().toISOString(),
@@ -1097,6 +1226,13 @@ export class StorageManager {
       if (Array.isArray(data.settlements) && data.settlements.length) {
         writeJSON(STORAGE_KEYS.SETTLEMENTS, data.settlements);
         if (!isDemoMode()) await SupabaseSyncEngine.saveSettlements(data.settlements);
+      }
+      if (Array.isArray(data.challengeLogs) && data.challengeLogs.length) {
+        const logs = data.challengeLogs
+          .filter(l => l && isChallengeLogId(l.id) && l.userId && l.date)
+          .map(l => ({ ...l, updatedAt: l.updatedAt || l.createdAt || new Date().toISOString() }));
+        writeJSON(STORAGE_KEYS.CHALLENGE_LOGS, logs);
+        for (const l of logs) await this._pushChallengeLog(l);
       }
       if (data.settings) this.saveDeviceSettings(data.settings);
       if (data.sharedSettings) await this.saveSharedSettings(data.sharedSettings);

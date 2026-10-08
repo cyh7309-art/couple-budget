@@ -15,6 +15,7 @@ import { renderDashboardView } from './ui/dashboardView.js';
 import { renderTransactionsView } from './ui/transactionsView.js';
 import { renderStatisticsView } from './ui/statisticsView.js';
 import { renderGoalsView } from './ui/goalsView.js';
+import { renderChallengeView } from './ui/challengeView.js';
 import { renderSettingsView } from './ui/settingsView.js';
 import { TransactionModal } from './ui/transactionModal.js';
 
@@ -205,6 +206,8 @@ class CoupleFinanceApp {
     this.btnFabAdd = document.getElementById('btn-fab-add');
 
     this.sidebarUserBadges = document.getElementById('sidebar-user-badges');
+    this.monthSelector = document.querySelector('.month-selector');
+    this.headerTabTitle = document.getElementById('header-tab-title');
 
     this.sidebarNavItems = document.querySelectorAll('.sidebar-nav .nav-item');
     this.bottomNavItems = document.querySelectorAll('.bottom-nav .b-nav-item:not(.fab-center-item)');
@@ -277,6 +280,11 @@ class CoupleFinanceApp {
       this.sidebarUserBadges.textContent = `👨 ${users.husband.name} · 👩 ${users.wife.name}`;
     }
 
+    // 월 단위가 아닌 화면에서는 월 선택을 감추고 화면 제목을 보여줍니다
+    const monthless = this.activeTab === 'challenge';
+    if (this.monthSelector) this.monthSelector.hidden = monthless;
+    if (this.headerTabTitle) this.headerTabTitle.hidden = !monthless;
+
     this.updateCloudBadge();
   }
 
@@ -296,6 +304,8 @@ class CoupleFinanceApp {
       renderStatisticsView(this.viewContainer, this.currentMonthStr);
     } else if (this.activeTab === 'goals') {
       renderGoalsView(this.viewContainer, () => this.render());
+    } else if (this.activeTab === 'challenge') {
+      renderChallengeView(this.viewContainer, () => this.render());
     } else if (this.activeTab === 'settings') {
       renderSettingsView(this.viewContainer, this.currentMonthStr, () => this.render());
     }
