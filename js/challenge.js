@@ -31,7 +31,10 @@ export const DEFAULT_CHALLENGE_SETTINGS = {
   startDate: '',     // 도전 시작일 (비우면 첫 기록일)
   shootDate: '',     // 웨딩 촬영일
   weddingDate: '',   // 결혼식
-  targets: { husband: null, wife: null }   // 목표 몸무게(kg)
+  targets: { husband: null, wife: null },  // 목표 몸무게(kg)
+  // 몸무게를 상대에게 숨길지. 숨기면 상대 기기에서는 숫자·변화량·그래프·목표가 모두 가려지고
+  // "오늘 쟀는지"만 보입니다. 아내는 기본이 비공개입니다.
+  privateWeight: { husband: false, wife: true }
 };
 
 export function challengeLogId(userId, date) {
@@ -60,12 +63,20 @@ export function normalizeChallengeSettings(raw) {
   const t = s.targets && typeof s.targets === 'object' ? s.targets : {};
   const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
   const date = (v) => (isDateStr(v) ? v : '');
+  const p = s.privateWeight && typeof s.privateWeight === 'object' ? s.privateWeight : {};
   return {
     startDate: date(s.startDate),
     shootDate: date(s.shootDate),
     weddingDate: date(s.weddingDate),
-    targets: { husband: num(t.husband), wife: num(t.wife) }
+    targets: { husband: num(t.husband), wife: num(t.wife) },
+    privateWeight: { husband: p.husband === true, wife: p.wife !== false }
   };
+}
+
+/** viewerId 가 ownerId 의 몸무게를 볼 수 없는가 (본인은 항상 볼 수 있습니다) */
+export function isWeightHidden(settings, ownerId, viewerId) {
+  if (ownerId === viewerId) return false;
+  return normalizeChallengeSettings(settings).privateWeight[ownerId] === true;
 }
 
 /* ---------- 날짜 ---------- */
@@ -369,7 +380,8 @@ export function demoChallengeSettings(today) {
     startDate: addDays(today, -20),
     shootDate: addDays(today, 23),
     weddingDate: addDays(today, 121),
-    targets: { husband: 75, wife: 50 }
+    targets: { husband: 75, wife: 50 },
+    privateWeight: { husband: false, wife: true }
   };
 }
 

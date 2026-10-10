@@ -15,7 +15,7 @@ import {
   addDays, mondayOf, weekdayOf, formatDayLabel, formatShortDate, diffDays,
   daysUntil, formatDday, nextEvent, isDateStr, isTimeStr,
   parseWeight, formatKg, formatDelta, guessMealSlot, sortMeals,
-  findLog, weightProgress, recordStreak, weekSummary, daySnapshot
+  findLog, weightProgress, recordStreak, weekSummary, daySnapshot, isWeightHidden
 } from '../challenge.js';
 
 const USER_IDS = ['husband', 'wife'];
@@ -146,12 +146,16 @@ export function renderChallengeView(containerEl, refreshApp) {
             const snap = daySnapshot(findLog(logs, id, today));
             const prog = weightProgress(logs, id, cfg, today);
             const active = ui.person === id;
+            const hidden = isWeightHidden(cfg, id, meId);
             return `
               <button class="ch-person ${active ? 'is-active' : ''}" data-act="pick-person" data-user="${id}"
                       aria-pressed="${active}">
                 <span class="ch-person-name">
                   <span class="who-dot ${id === 'husband' ? 'who-h' : 'who-w'}"></span>${esc(nameOf(id))}${id === meId ? '<span class="ch-me">나</span>' : ''}
                 </span>
+                ${hidden ? `
+                <span class="ch-person-weight"><strong class="ch-private">비공개</strong></span>
+                <span class="ch-person-delta">몸무게는 본인만 봐요</span>` : `
                 <span class="ch-person-weight">
                   ${prog.latest ? `<strong>${formatKg(prog.latest.weight)}</strong><span class="ch-unit">kg</span>` : '<strong class="ch-none">–</strong>'}
                 </span>
@@ -159,7 +163,7 @@ export function renderChallengeView(containerEl, refreshApp) {
                   ${prog.latest && prog.series.length > 1
                     ? `시작보다 ${esc(formatDelta(prog.totalDelta))}kg`
                     : (prog.latest ? '첫 기록' : '몸무게 기록 전')}
-                </span>
+                </span>`}
                 <span class="ch-checks">
                   <span class="ch-check ${snap.weight !== null ? 'is-done' : ''}">몸무게${snap.weight !== null ? ' ✓' : ''}</span>
                   <span class="ch-check ${snap.mealCount > 0 ? 'is-done' : ''}">식단 ${snap.mealCount}</span>
@@ -199,8 +203,21 @@ export function renderChallengeView(containerEl, refreshApp) {
       </div>`;
   }
 
-  function weightBlockHtml(logs, log, editable) {
+  function weightBlockHtml(logs, log, editable, hidden) {
     const saved = log && Number(log.weight) > 0 ? Number(log.weight) : null;
+
+    // 비공개: 숫자는 화면에 싣지 않고 쟀는지 여부만 알려줍니다
+    if (hidden) {
+      return `
+        <div class="ch-block">
+          <div class="ch-block-head"><h4 class="ch-block-title">공복 몸무게</h4></div>
+          <div class="ch-weight-read">
+            <span class="ch-private">비공개</span>
+            <span class="ch-none">· ${saved !== null ? '기록함' : '기록 없음'}</span>
+          </div>
+        </div>`;
+    }
+
     // 바로 앞 기록과 비교 (어제가 비어 있으면 그 전 기록)
     const prev = logs
       .filter(l => l.userId === ui.person && l.date < ui.date && Number(l.weight) > 0)
@@ -345,14 +362,24 @@ export function renderChallengeView(containerEl, refreshApp) {
           <span><strong>${esc(nameOf(ui.person))}</strong>의 기록</span>
           ${editable ? '' : `<span class="ch-readonly">보기 전용 · ${esc(nameOf(ui.person))}의 기기에서 적어요</span>`}
         </div>
-        ${weightBlockHtml(logs, log, editable)}
+        ${weightBlockHtml(logs, log, editable, isWeightHidden(StorageManager.getChallengeSettings(), ui.person, meId))}
         ${mealBlockHtml(log, editable)}
         ${workoutBlockHtml(log, editable)}
       </section>`;
   }
 
-  function weightCardHtml(prog) {
+  function weightCardHtml(prog, hidden) {
     const name = esc(nameOf(ui.person));
+    if (hidden) {
+      return `
+        <section class="card ch-trend">
+          <h3 class="card-title">${name}의 몸무게 변화</h3>
+          <div class="empty-state ch-empty-state">
+            <span class="empty-icon">🔒</span>
+            <p>${name}의 몸무게는 비공개예요.<br>식단과 운동 기록은 그대로 볼 수 있어요.</p>
+          </div>
+        </section>`;
+    }
     if (!prog.latest) {
       return `
         <section class="card ch-trend">
@@ -457,6 +484,7 @@ export function renderChallengeView(containerEl, refreshApp) {
   }
 
   function settingsCardHtml(meId) {
+    const cfg = StorageManager.getChallengeSettings();
     return `
       <section class="card ch-settings">
         <button class="detail-toggle ch-settings-toggle ${ui.settingsOpen ? 'open' : ''}" data-act="toggle-settings" aria-expanded="${ui.settingsOpen}"
@@ -482,7 +510,7 @@ export function renderChallengeView(containerEl, refreshApp) {
               <label class="form-label" for="ch-set-start">도전 시작일</label>
               <input type="date" id="ch-set-start" class="form-input" />
             </div>
-            ${USER_IDS.map(id => `
+            ${USER_IDS.filter(id => !isWeightHidden(cfg, id, meId)).map(id => `
               <div class="form-group">
                 <label class="form-label" for="ch-set-target-${id}">${esc(nameOf(id))} 목표 몸무게 (kg)</label>
                 <input type="text" inputmode="decimal" id="ch-set-target-${id}" class="form-input" maxlength="6"
@@ -495,6 +523,10 @@ export function renderChallengeView(containerEl, refreshApp) {
               </select>
             </div>
           </div>
+          <label class="check-row">
+            <input type="checkbox" id="ch-set-private" ${cfg.privateWeight[meId] ? 'checked' : ''} />
+            <span>내 몸무게를 상대에게 숨기기 <span class="ch-none">(숫자 · 변화량 · 그래프 · 목표가 상대 화면에서 가려져요)</span></span>
+          </label>
           <p class="card-desc">날짜와 목표는 두 기기에 같이 적용돼요. 시작일을 비우면 첫 기록부터 셉니다. ‘이 기기 사용자’만 이 기기에 저장돼요.</p>
           <div class="form-actions">
             <button class="btn-primary-sm ch-btn" data-act="save-settings">설정 저장</button>
@@ -633,7 +665,9 @@ export function renderChallengeView(containerEl, refreshApp) {
         <div class="ch-columns">
           <div class="ch-col">${dayCardHtml(logs, meId)}</div>
           <div class="ch-col">
-            ${weightCardHtml(weightProgress(logs, ui.person, cfg, today))}
+            ${isWeightHidden(cfg, ui.person, meId)
+              ? weightCardHtml(null, true)
+              : weightCardHtml(weightProgress(logs, ui.person, cfg, today), false)}
             ${weekCardHtml(logs)}
           </div>
         </div>
@@ -784,8 +818,12 @@ export function renderChallengeView(containerEl, refreshApp) {
 
   async function saveSettings(root) {
     const val = (id) => (root.querySelector('#' + id) || {}).value || '';
+    const current = StorageManager.getChallengeSettings();
+    const meBefore = me();
     const targets = {};
     for (const id of USER_IDS) {
+      // 비공개라 입력칸이 없는 사람의 목표는 건드리지 않습니다
+      if (!root.querySelector(`#ch-set-target-${id}`)) { targets[id] = current.targets[id]; continue; }
       const raw = val(`ch-set-target-${id}`).trim();
       if (raw === '') { targets[id] = null; continue; }
       const w = parseWeight(raw);
@@ -795,6 +833,11 @@ export function renderChallengeView(containerEl, refreshApp) {
 
     const shoot = val('ch-set-shoot'), wedding = val('ch-set-wedding'), start = val('ch-set-start');
     if (start && start > today) { alert('도전 시작일은 오늘이나 그 이전 날짜로 정해주세요.'); return; }
+
+    // 숨김 여부는 본인 것만 바꿀 수 있습니다
+    const privateBox = root.querySelector('#ch-set-private');
+    const privateWeight = { ...current.privateWeight };
+    if (privateBox && meBefore) privateWeight[meBefore] = privateBox.checked;
 
     const meSel = val('ch-set-me');
     if (USER_IDS.includes(meSel) && meSel !== me()) {
@@ -806,7 +849,7 @@ export function renderChallengeView(containerEl, refreshApp) {
     ui.settings = null;
     ui.settingsOpen = false;
     const pending = StorageManager.saveChallengeSettings({
-      shootDate: shoot, weddingDate: wedding, startDate: start, targets
+      shootDate: shoot, weddingDate: wedding, startDate: start, targets, privateWeight
     });
     paint();
     window.scrollTo({ top: 0, behavior: 'smooth' });

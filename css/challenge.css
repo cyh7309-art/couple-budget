@@ -425,3 +425,18 @@
   .ch-person { padding: 0.75rem 0.7rem; }
   .ch-item { gap: 0.5rem; }
 }
+
+/* ------------------------------ 몸무게 비공개 ------------------------------ */
+.ch-private {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.85rem !important;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: var(--surface-3);
+  color: var(--text-body);
+}
+.ch-weight-read .ch-none { font-size: 0.88rem; }
+.ch-settings .check-row { align-items: center; min-height: 40px; }
